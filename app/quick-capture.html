@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Veloria Notes - Hızlı Not</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0f172a;color:#e2e8f0;font:14px system-ui,-apple-system,Segoe UI,sans-serif}main{padding:22px}h1{margin:0 0 4px;font-size:20px}p{margin:0 0 14px;color:#94a3b8;font-size:12px}textarea{width:100%;height:155px;resize:none;border:1px solid #334155;border-radius:16px;background:#020617;color:#f8fafc;padding:14px;outline:none;font:14px/1.5 system-ui}textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12)}.bar{display:flex;gap:8px;margin-top:12px}.bar button{border:0;border-radius:12px;padding:10px 13px;font-weight:800;cursor:pointer;background:#1e293b;color:#e2e8f0}.bar .primary{background:#2563eb;color:white;flex:1}.hint{font-size:10px;color:#64748b;margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Hızlı Not</h1>
+  <p>Veloria Notes açıkken Ctrl + Alt + V ile her yerden hızlı metin yakalayabilirsin.</p>
+  <textarea id="text" autofocus placeholder="Not veya fikir yaz..."></textarea>
+  <div class="bar"><button id="save" class="primary">Kaydet</button><button id="close">Kapat</button></div>
+  <div class="hint">Ctrl+Enter: kaydet · Esc: kapat</div>
+</main>
+<script src="quick-capture.js"></script>
+</body>
+</html>

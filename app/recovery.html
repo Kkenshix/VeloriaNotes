@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Veloria Notes Kurtarma</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#e5e7eb;font:14px system-ui,-apple-system,Segoe UI,sans-serif}.wrap{max-width:900px;margin:auto;padding:32px}h1{font-size:28px;margin:0}.sub{color:#94a3b8;margin:6px 0 24px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{border:1px solid #263449;background:#111c2e;border-radius:18px;padding:18px}.card h2{font-size:15px;margin:0 0 8px}.card p{font-size:11px;color:#94a3b8}.btn{border:0;background:#243148;color:#e5e7eb;padding:10px 12px;border-radius:11px;font-weight:800;cursor:pointer;margin:4px 4px 4px 0}.primary{background:#6366f1}.danger{background:#7f1d1d}.list{margin-top:12px;max-height:300px;overflow:auto}.row{display:flex;align-items:center;gap:8px;padding:9px;border-top:1px solid #263449}.row .grow{flex:1;min-width:0}.small{font-size:10px;color:#94a3b8}.status{margin-top:18px;padding:12px;border-radius:12px;background:#111c2e;color:#a5b4fc;min-height:42px}@media(max-width:720px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Veloria Notes Kurtarma</h1>
+  <div class="sub">Not verisini kurtar, program sürümünü geri al veya kurtarma paketi oluştur. Fiziksel “Veloria Dosyalar” klasörü otomatik silinmez.</div>
+  <div class="grid">
+    <section class="card"><h2>Not / veri yedekleri</h2><p>Yerel anlık görüntülerden birini ana veri dosyası olarak geri yükler.</p><button id="refreshState" class="btn">Yedekleri yenile</button><button id="exportRecovery" class="btn primary">Kurtarma paketi oluştur</button><div id="states" class="list"></div></section>
+    <section class="card"><h2>Program sürümü</h2><p>Bir güncellemeden önce kaydedilen uygulama katmanına geri döner. Not ve dosya verisine dokunmaz.</p><button id="refreshApps" class="btn">Sürümleri yenile</button><div id="apps" class="list"></div></section>
+    <section class="card"><h2>Klasörler</h2><button id="openBackups" class="btn">Veri / yedek klasörünü aç</button><button id="openRoot" class="btn">Veloria Dosyalar'ı aç</button><button id="openInstall" class="btn">Program klasörünü aç</button></section>
+    <section class="card"><h2>Veloria Notes</h2><p>Kurtarma işlemi bittiğinde bu pencereyi kapatıp normal Veloria Notes kısayolunu açabilirsin.</p><button id="quit" class="btn danger">Kurtarmayı kapat</button></section>
+  </div>
+  <div id="status" class="status">Hazır.</div>
+</div>
+<script src="recovery.js"></script>
+</body>
+</html>

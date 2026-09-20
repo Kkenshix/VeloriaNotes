@@ -1,0 +1,77 @@
+{
+  "name": "veloria-notes",
+  "productName": "Veloria Notes",
+  "version": "1.0.0",
+  "description": "Yerel odaklı, açık kaynak Windows not ve dosya çalışma alanı.",
+  "author": "Kenshix",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check main.js && node --check preload.js && node --check renderer.js && node --check file-service.js && node --check archive-service.js && node --check quick-preload.js && node --check quick-capture.js && node --check recovery.js && node --check recovery-preload.js",
+    "test": "node --test tests/*.test.js",
+    "validate": "npm run check && npm test",
+    "dist": "electron-builder --win nsis",
+    "pack": "electron-builder --dir --win"
+  },
+  "devDependencies": {
+    "electron": "44.4.3",
+    "electron-builder": "26.3.5"
+  },
+  "build": {
+    "appId": "com.kenshix.velorianotes",
+    "productName": "Veloria Notes",
+    "artifactName": "Veloria-Notes-Setup-1.0.${ext}",
+    "asar": false,
+    "directories": {
+      "output": "../dist"
+    },
+    "files": [
+      "**/*",
+      "!tests/**",
+      "!node_modules/.cache/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../VELORIA_UPDATE_ENGINE.ps1",
+        "to": "VELORIA_UPDATE_ENGINE.ps1"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico",
+      "executableName": "Veloria Notes"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Veloria Notes",
+      "uninstallDisplayName": "Veloria Notes",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    },
+    "protocols": [
+      {
+        "name": "Veloria Notes Protocol",
+        "schemes": [
+          "veloria"
+        ]
+      }
+    ]
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "packageManager": "npm@10.9.2"
+}
