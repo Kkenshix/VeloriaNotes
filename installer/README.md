@@ -11,7 +11,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\installer\build-web-instal
 Çıktı:
 
 ```text
-dist\Veloria-Notes-Web-Setup-1.1.0.exe
+dist\Veloria-Notes-Web-Setup-1.1.1.exe
 ```
 
-GitHub Releases için ana paket `electron-builder` ile oluşturulan `Veloria-Notes-Setup-1.1.0.exe` dosyasıdır. Web installer daha küçük bir alternatif olarak sunulur.
+GitHub Releases için ana paket `electron-builder` ile oluşturulan `Veloria-Notes-Setup-1.1.1.exe` dosyasıdır. Web installer daha küçük bir alternatif olarak sunulur.

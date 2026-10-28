@@ -937,7 +937,8 @@ const V685_CLOSE_PAIRS=new Set(Object.values(V685_OPEN_PAIRS));
 
 function v685Clipboard(e){
   const d=e?.clipboardData;
-  return {text:String(d?.getData('text/plain')||'').replace(/\r\n?/g,'\n'),html:String(d?.getData('text/html')||'')}
+  const html=String(d?.getData('text/html')||''),plain=String(d?.getData('text/plain')||'').replace(/\r\n?/g,'\n');
+  return {text:v111ClipboardPlainText(plain,html),html}
 }
 function v685IsVeryLargePaste(text){
   if(!text)return false;
@@ -1077,7 +1078,7 @@ function v685InsertPlainControl(target,text){
 function v685HandlePaste(e){
   const target=e.currentTarget;if(!target||!el.content)return;const snap=v685ViewportSnapshot(target),clip=v685Clipboard(e),editable=target.isContentEditable||target.getAttribute?.('contenteditable')==='true',control=target instanceof HTMLTextAreaElement;
   if(editable){
-    e.preventDefault();const html=clip.text?editorUtils.textToHtml(clip.text):v685SanitizeClipboardHtml(clip.html);v685InsertHtmlEditable(target,html)
+    e.preventDefault();const text=v111PrepareGapPaste(target,clip.text),html=text?editorUtils.textToHtml(text):v685SanitizeClipboardHtml(clip.html);v685InsertHtmlEditable(target,html)
   }else if(control&&v685IsVeryLargePaste(clip.text)){
     e.preventDefault();v685InsertPlainControl(target,clip.text)
   }
@@ -1540,9 +1541,10 @@ function v692BindHistoryEditors(){
   for(const rich of scope.querySelectorAll('[data-edit="rich"]')){
     rich.classList.add('v692-nowrap');
     if(rich.dataset.v692History==='1')continue;rich.dataset.v692History='1';
-    v11LinkifyRich(rich);v692HistoryState(rich);
+    v111BindClipboard(rich);
+    v111NormalizeParagraphs(rich);v11LinkifyRich(rich);v692HistoryState(rich);
     rich.addEventListener('beforeinput',e=>{if(v692ApplyingHistory)return;if(e.inputType==='historyUndo'||e.inputType==='historyRedo'){e.preventDefault();e.stopImmediatePropagation();if(e.inputType==='historyUndo')v692UndoRich(rich);else v692RedoRich(rich);return}v692HistoryCheckpoint(rich)},true);
-    rich.addEventListener('input',()=>{if(v692ApplyingHistory)return;v11LinkifyRich(rich);const h=v692HistoryState(rich),snap=v11Snapshot(rich);if(h.current.html!==snap.html){if(!h.pending&&h.undo.at(-1)?.html!==h.current.html)h.undo.push(h.current);if(h.undo.length>V692_HISTORY_LIMIT)h.undo.shift();h.redo.length=0}h.current=snap;h.pending=false},true)
+    rich.addEventListener('input',()=>{if(v692ApplyingHistory)return;v111NormalizeParagraphs(rich);v11LinkifyRich(rich);const h=v692HistoryState(rich),snap=v11Snapshot(rich);if(h.current.html!==snap.html){if(!h.pending&&h.undo.at(-1)?.html!==h.current.html)h.undo.push(h.current);if(h.undo.length>V692_HISTORY_LIMIT)h.undo.shift();h.redo.length=0}h.current=snap;h.pending=false},true)
   }
 }
 const _v692BindSmartBase=v685BindSmartEditors;
@@ -1995,6 +1997,84 @@ async function init(){
 }
 
 // v1.1: stable literal text editing, external links and session-only tabs.
+const v111CutGaps=new WeakMap();
+const V111_LINE_TAGS=new Set(['P','DIV','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','UL','OL','LI','PRE','TR']);
+function v111NormalizeParagraphs(rich){
+  const paragraphs=[...rich.querySelectorAll('p')].filter(p=>!p.closest('pre,code,[contenteditable="false"]'));if(!paragraphs.length)return;
+  const selection=v11Selection(rich);
+  for(const p of paragraphs){const line=document.createElement('div');if(p.className)line.className=p.className;while(p.firstChild)line.append(p.firstChild);p.replaceWith(line)}
+  if(selection)v11RestoreSelection(rich,selection);
+}
+function v111FragmentText(container){
+  // A paragraph boundary represents one displayed line, even though Chromium's
+  // default clipboard text emits two newlines for P and an extra one for empty BRs.
+  const read=node=>{
+    if(node.nodeType===Node.TEXT_NODE)return node.nodeValue||'';
+    if(node.nodeType!==Node.ELEMENT_NODE&&node.nodeType!==Node.DOCUMENT_FRAGMENT_NODE)return'';
+    if(node.nodeName==='BR')return'\n';
+    if(node.nodeName==='PRE'||node.nodeName==='CODE')return node.textContent||'';
+    if(node.nodeName==='IMG')return node.getAttribute('alt')||'';
+    if(node.hasAttribute?.('data-veloria-inline-file'))return node.getAttribute('data-name')||node.textContent||'';
+    const children=[...node.childNodes],isLine=V111_LINE_TAGS.has(node.nodeName);
+    if(isLine&&children.length===1&&children[0].nodeName==='BR')return'';
+    const hasLines=children.some(n=>V111_LINE_TAGS.has(n.nodeName));
+    let out='',previousLine=false,seen=false;
+    for(const child of children){
+      if(hasLines&&child.nodeType===Node.TEXT_NODE&&/^[\t\r\n ]*$/.test(child.nodeValue||'')&&/[\r\n]/.test(child.nodeValue||''))continue;
+      const line=V111_LINE_TAGS.has(child.nodeName),value=read(child);
+      if(seen&&(line||previousLine))out+='\n';
+      out+=value;previousLine=line;seen=true;
+    }
+    return out;
+  };
+  if(container.childNodes.length===1&&container.firstChild.nodeName==='BR')return'';
+  return read(container).replace(/\r\n?/g,'\n');
+}
+function v111ClipboardPlainText(plain,html){
+  if(!plain.trim()||!html||!/<(?:p|div)\b/i.test(html))return plain;
+  const parsed=new DOMParser().parseFromString(v685SanitizeClipboardHtml(html),'text/html');
+  const displayed=v111FragmentText(parsed.body);
+  // HTML is used only to correct whitespace, never to add clipboard content.
+  return displayed.replace(/\s/g,'')===plain.replace(/\s/g,'')?displayed:plain;
+}
+function v111TextOffset(rich,node,offset){const r=document.createRange();r.selectNodeContents(rich);r.setEnd(node,offset);return r.toString().length}
+function v111TextPoint(rich,offset){const walker=document.createTreeWalker(rich,NodeFilter.SHOW_TEXT);let node,last;while((node=walker.nextNode())){last=node;if(offset<=node.length)return[node,offset];offset-=node.length}return last?[last,last.length]:[rich,0]}
+function v111JoinCutSpaces(rich,left,right,selected){
+  const before=left.match(/[^\s]([ \t\u00a0]+)$/),after=right.match(/^([ \t\u00a0]+)[^\s]/);
+  const removedBothSeparators=!before&&!after&&/[^\s]$/.test(left)&&/^[^\s]/.test(right)&&/^[ \t\u00a0]|[ \t\u00a0]$/.test(selected);
+  const caret=v685RangeInside(rich);if((!before||!after)&&!removedBothSeparators||!caret?.collapsed)return null;
+  const offset=v111TextOffset(rich,caret.startContainer,caret.startOffset),start=offset-(before?.[1].length||0),end=offset+(after?.[1].length||0);
+  const a=v111TextPoint(rich,start),b=v111TextPoint(rich,end),range=document.createRange();range.setStart(a[0],a[1]);range.setEnd(b[0],b[1]);
+  range.deleteContents();const gap=document.createTextNode(' ');range.insertNode(gap);v685SetCaretAfter(gap);
+  return{start,end:start+1};
+}
+function v111BindClipboard(rich){
+  const copy=(event,cut)=>{
+    const range=v685RangeInside(rich);if(!event.clipboardData||!range||range.collapsed)return;
+    const fragment=range.cloneContents(),holder=document.createElement('div');holder.append(fragment);
+    const selected=v111FragmentText(holder);event.clipboardData.setData('text/plain',selected);
+    event.clipboardData.setData('text/html',v690SerializeRich(holder));event.preventDefault();
+    if(!cut)return;
+    const prefix=range.cloneRange(),suffix=range.cloneRange();prefix.selectNodeContents(rich);prefix.setEnd(range.startContainer,range.startOffset);suffix.selectNodeContents(rich);suffix.setStart(range.endContainer,range.endOffset);
+    const left=v111FragmentText(prefix.cloneContents()),right=v111FragmentText(suffix.cloneContents());
+    const element=node=>node.nodeType===Node.ELEMENT_NODE?node:node.parentElement;
+    const inCode=(element(range.startContainer)?.closest('pre,code')||element(range.endContainer)?.closest('pre,code'));
+    v692HistoryCheckpoint(rich);let gap=null;v692ApplyingHistory=true;
+    try{if(!document.execCommand('delete',false)){range.deleteContents();range.collapse(true);const selection=getSelection();selection.removeAllRanges();selection.addRange(range)}if(!inCode)gap=v111JoinCutSpaces(rich,left,right,selected)}finally{v692ApplyingHistory=false}
+    v685DispatchInput(rich,'deleteByCut');
+    if(gap)v111CutGaps.set(rich,{...gap,html:v690SerializeRich(rich)});else v111CutGaps.delete(rich);
+  };
+  rich.addEventListener('copy',event=>copy(event,false));
+  rich.addEventListener('cut',event=>copy(event,true));
+}
+function v111PrepareGapPaste(rich,text){
+  const gap=v111CutGaps.get(rich);v111CutGaps.delete(rich);const caret=v685RangeInside(rich);
+  if(!text||!gap||!caret?.collapsed||gap.html!==v690SerializeRich(rich)||v111TextOffset(rich,caret.startContainer,caret.startOffset)!==gap.end)return text;
+  // Replacing a word immediately after cutting it restores its separators, while
+  // the empty cut location itself contains only one space.
+  const a=v111TextPoint(rich,gap.start),b=v111TextPoint(rich,gap.end),range=document.createRange();range.setStart(a[0],a[1]);range.setEnd(b[0],b[1]);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+  return `${/^[\s]/.test(text)?'':' '}${text}${/[\s]$/.test(text)?'':' '}`;
+}
 function v11StillViewingFile(path){return currentView.kind==='file'&&norm(currentView.path)===norm(path)}
 function v11BindControlHistory(area){
   if(area.dataset.v11History)return;area.dataset.v11History='1';

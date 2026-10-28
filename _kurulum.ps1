@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 $ElectronVersion = '44.10.0'
-$AppVersion = '1.1.0'
+$AppVersion = '1.1.1'
 $AppName = 'Veloria Notes'
 $Author = 'Kenshix'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path

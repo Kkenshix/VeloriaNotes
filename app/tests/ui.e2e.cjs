@@ -37,10 +37,14 @@ const appDir = path.resolve(__dirname, '..');
   };
   const open = async title => { await win.locator('.page-row .row-main').filter({ hasText: title }).dblclick(); return win.locator('[data-edit="rich"]').first(); };
   const paste = async (area, text) => { await app.evaluate(({ clipboard }, value) => clipboard.writeText(value), text); await area.press('Control+v'); };
+  const clipboardText = async () => (await app.evaluate(({ clipboard }) => clipboard.readText())).replace(/\r\n?/g, '\n');
+  const selectChars = async (area, start, length) => { await area.press('Control+Home'); for(let i=0;i<start;i++)await area.press('ArrowRight'); for(let i=0;i<length;i++)await area.press('Shift+ArrowRight'); };
+  const stage = async (area, html) => { await area.evaluate((node, value) => { node.innerHTML=value; node.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText'})); }, html); await area.click(); };
+  const restoreClipboard = async () => { await app.evaluate(async ({ clipboard, ClipboardItem }, saved) => { await clipboard.write(saved.map(item => new ClipboardItem(Object.fromEntries(item.map(value => [value.type, value.bookmark || new Blob([new Uint8Array(value.bytes)], {type:value.type})]))))); }, originalClipboard); };
   const closeWindow = async () => { const closed = win.waitForEvent('close'); await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close()); await closed; await app.close().catch(() => {}); app = null; };
   try {
     await start();
-    originalClipboard = await app.evaluate(({ clipboard }) => clipboard.readText());
+    originalClipboard = await app.evaluate(async ({ clipboard }) => Promise.all((await clipboard.read()).map(item => Promise.all(item.types.map(async type => { const value=await item.getType(type); return type==='electron application/bookmark'?{type,bookmark:value}:{type,bytes:Array.from(new Uint8Array(await value.arrayBuffer()))}; })))));
     assert.equal(await win.locator('.tab').count(), 0);
     let rich = await open('Birinci');
     await rich.click(); await win.keyboard.type('metin +'); await rich.press('Space'); await rich.press('Enter'); await win.keyboard.type('+'); await rich.press('Space'); await win.keyboard.type('ikinci');
@@ -54,6 +58,25 @@ const appDir = path.resolve(__dirname, '..');
     assert.equal(await rich.innerText(), 'bir\niki\nüç\nalfa\nbeta\ngama'); checks.push('paste after Enter');
     await rich.press('Control+a'); await paste(rich, '\nbir\n\niki\n');
     assert.equal(await rich.innerText(), '\nbir\n\niki\n'); checks.push('intentional blank lines');
+    await stage(rich,'<p>bir</p><p>iki</p><p>üç</p>');
+    await rich.press('Control+a'); await rich.press('Control+c');
+    assert.equal(await clipboardText(),'bir\niki\nüç'); checks.push('paragraph copy has one line separator');
+    await rich.press('Control+x'); assert.equal(await clipboardText(),'bir\niki\nüç'); await rich.press('Control+v');
+    assert.equal(await rich.innerText(),'bir\niki\nüç'); checks.push('three-paragraph cut and paste');
+    for(let i=0;i<10;i++){await rich.press('Control+a');await rich.press('Control+x');await rich.press('Control+v');assert.equal(await rich.innerText(),'bir\niki\nüç');} checks.push('ten repeated cuts do not accumulate blank lines');
+    await stage(rich,'<p>ilk orta son</p>'); await selectChars(rich,4,4); await rich.press('Control+x');
+    assert.equal(await rich.innerText(),'ilk son'); assert.equal(await clipboardText(),'orta'); checks.push('word cut leaves exactly one space');
+    await rich.press('Control+z'); assert.equal(await rich.innerText(),'ilk orta son'); await rich.press('Control+y'); assert.equal(await rich.innerText(),'ilk son'); checks.push('cut and spacing share one undo step');
+    await rich.press('Control+v'); assert.equal(await rich.innerText(),'ilk orta son'); checks.push('paste back into normalized cut gap');
+    await stage(rich,'<p>ilk orta son</p>'); await selectChars(rich,3,6); await rich.press('Control+x');
+    assert.equal(await rich.innerText(),'ilk son'); assert.equal(await clipboardText(),' orta '); await rich.press('Control+v'); assert.equal(await rich.innerText(),'ilk orta son'); checks.push('cut including both separators preserves one gap');
+    await stage(rich,'<p>ilk  orta   son</p>'); await selectChars(rich,5,4); await rich.press('Control+x'); assert.equal(await rich.innerText(),'ilk son'); await rich.press('Control+z'); assert.equal(await rich.innerText(),'ilk  orta   son'); checks.push('cut boundary cleanup preserves original spacing on undo');
+    await rich.press('Control+a');
+    await app.evaluate(async ({clipboard,ClipboardItem}) => clipboard.write([new ClipboardItem({'text/plain':'alfa\r\n\r\nbeta\r\n\r\ngama','text/html':'<html><body><p>alfa</p><p>beta</p><p>gama</p></body></html>'})]));
+    await rich.press('Control+v'); assert.equal(await rich.innerText(),'alfa\nbeta\ngama'); checks.push('external HTML paragraphs have no extra blank lines');
+    await stage(rich,'<p>bir</p><p><br></p><p>üç</p>'); await rich.press('Control+a'); await rich.press('Control+c'); assert.equal(await clipboardText(),'bir\n\nüç'); await rich.press('Control+v'); assert.equal(await rich.innerText(),'bir\n\nüç'); checks.push('one intentional empty paragraph stays one blank line');
+    await stage(rich,'<pre><code>  alpha  beta\n    gamma</code></pre>'); await rich.press('Control+a'); await rich.press('Control+c'); assert.equal(await clipboardText(),'  alpha  beta\n    gamma'); checks.push('copy preserves code indentation and deliberate spaces');
+    await stage(rich,'<p>ilk alfa<br>beta<br>gama son</p>'); await selectChars(rich,4,14); await rich.press('Control+x'); assert.equal(await rich.innerText(),'ilk son'); assert.equal(await clipboardText(),'alfa\nbeta\ngama'); await rich.press('Control+v'); assert.equal(await rich.innerText(),'ilk alfa\nbeta\ngama son'); checks.push('multiline cut normalizes only the joining gap');
     await rich.press('Control+a'); await win.keyboard.type('https://example.com');
     assert.equal(await rich.locator('a').getAttribute('href'), 'https://example.com/');
     await rich.press('Enter'); await win.keyboard.type('ikinci satir');
@@ -95,11 +118,11 @@ const appDir = path.resolve(__dirname, '..');
     await win.emulateMedia({ reducedMotion: 'reduce' }); await open('İkinci');
     assert.equal(await win.locator('#content').evaluate(n => n.firstElementChild.getAnimations().filter(a => a.playState === 'running').length), 0); checks.push('reduced motion');
     assert.deepEqual(errors, []);
-    await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), originalClipboard);
+    await restoreClipboard();
     await closeWindow();
     console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));
   } finally {
-    if (app) { if (originalClipboard !== undefined) await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), originalClipboard).catch(() => {}); await app.close().catch(() => {}); }
+    if (app) { if (originalClipboard !== undefined) await restoreClipboard().catch(() => {}); await app.close().catch(() => {}); }
     await fs.rm(root, { recursive: true, force: true });
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

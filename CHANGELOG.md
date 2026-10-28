@@ -1,5 +1,15 @@
 # Değişiklik Günlüğü
 
+## 1.1.1 - 2026-10-28
+
+- Ctrl+X ile kelime kesildiğinde iki yandaki boşlukların birleşip çift boşluk oluşturması düzeltildi; kesme yerinde tek boşluk kalır.
+- Kesilen kelime veya çok satırlı metin aynı yere yapıştırıldığında ayırıcı boşluklar doğru geri eklenir.
+- Eski paragraf biçimindeki notların kopyalanırken panoya çift satır aralığıyla yazılması düzeltildi.
+- Dış uygulamalardan gelen üç paragraflı metinde fazladan boş satır oluşması giderildi; görünen satır sayısı korunur.
+- Boşluk düzeltmesi kesme işlemiyle birlikte tek adımda geri/ileri alınabilir.
+- Kod girintileri, bilerek bırakılan boş satırlar ve kesilen yerin dışındaki boşluklar korunur.
+- 23 otomatik test ve 29 gerçek Electron arayüz senaryosu geçti. On kez art arda kes/yapıştır döngüsü de test edildi.
+
 ## 1.1.0 - 2026-10-28
 
 ### Düzeltildi
