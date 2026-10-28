@@ -14,7 +14,7 @@ import (
 
 //go:embed payload.zip
 var payloadFS embed.FS
-var version = "1.1.1"
+var version = "1.1.2"
 
 func extractZip(data []byte, dst string) error {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))

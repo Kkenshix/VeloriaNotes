@@ -1,7 +1,7 @@
 {
   "name": "veloria-notes",
   "productName": "Veloria Notes",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Yerel odaklı, açık kaynak Windows not ve dosya çalışma alanı.",
   "author": "Kenshix",
   "main": "main.js",

@@ -2,7 +2,7 @@
   <img src="app/icon.png" alt="Veloria Notes" width="112">
 </p>
 
-# Veloria Notes v1.1.1
+# Veloria Notes v1.1.2
 
 **Veloria Notes**, notları, sayfaları, klasörleri ve fiziksel dosyaları tek bir yerel çalışma alanında düzenlemek için geliştirilmiş açık kaynak bir Windows masaüstü uygulamasıdır. Electron tabanlıdır; hesap açmayı veya bir bulut hizmetini kullanmayı zorunlu tutmaz.
 
@@ -29,13 +29,13 @@
 GitHub **Releases** bölümünde iki Windows kurucusu üretilecek şekilde proje hazırlanmıştır:
 
 ```text
-Veloria-Notes-Setup-1.1.1.exe
-Veloria-Notes-Web-Setup-1.1.1.exe
+Veloria-Notes-Setup-1.1.2.exe
+Veloria-Notes-Web-Setup-1.1.2.exe
 ```
 
-**`Veloria-Notes-Setup-1.1.1.exe`** ana kurulum paketidir. Electron çalışma zamanını paketle birlikte taşır ve normal son kullanıcı dağıtımı için önerilir.
+**`Veloria-Notes-Setup-1.1.2.exe`** ana kurulum paketidir. Electron çalışma zamanını paketle birlikte taşır ve normal son kullanıcı dağıtımı için önerilir.
 
-**`Veloria-Notes-Web-Setup-1.1.1.exe`** daha küçük kurucudur. Kaynak kodunu kendi içinde taşır; ilk kurulumda resmi Electron Windows çalışma zamanını indirir, resmi `SHASUMS256.txt` kaydıyla SHA-256 doğrulaması yapar ve kurulumu otomatik tamamlar.
+**`Veloria-Notes-Web-Setup-1.1.2.exe`** daha küçük kurucudur. Kaynak kodunu kendi içinde taşır; ilk kurulumda resmi Electron Windows çalışma zamanını indirir, resmi `SHASUMS256.txt` kaydıyla SHA-256 doğrulaması yapar ve kurulumu otomatik tamamlar.
 
 Her iki yöntemde de kullanıcı kaynak kodundan build almak zorunda değildir. Kurulum kullanıcı hesabına yapılır, masaüstü ve Başlat Menüsü kısayolları oluşturulur ve kurulum tamamlanınca **kurulu `Veloria Notes.exe` bağımsız bir işlem olarak açılır**. Kurulum terminali/CMD penceresi kapansa bile uygulama çalışmaya devam eder. Release iş akışı ayrıca kurulum dosyalarının SHA-256 özetlerini `SHA256SUMS.txt` olarak üretir.
 
@@ -109,7 +109,7 @@ npm run dist
 Çıktı:
 
 ```text
-dist\Veloria-Notes-Setup-1.1.1.exe
+dist\Veloria-Notes-Setup-1.1.2.exe
 ```
 
 ### Küçük web kurulum paketi
@@ -123,7 +123,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\installer\build-web-instal
 Çıktı:
 
 ```text
-dist\Veloria-Notes-Web-Setup-1.1.1.exe
+dist\Veloria-Notes-Web-Setup-1.1.2.exe
 ```
 
 Web kurucunun kaynak kodu `installer/bootstrap` klasöründedir.
@@ -143,7 +143,7 @@ Web kurucunun kaynak kodu `installer/bootstrap` klasöründedir.
 Örnek sürüm akışı:
 
 ```bash
-gh release create v1.1.1 dist/Veloria-Notes-Setup-1.1.1.exe --target main --notes-file RELEASE_NOTES.md
+gh release create v1.1.2 dist/Veloria-Notes-Setup-1.1.2.exe --target main --notes-file RELEASE_NOTES.md
 ```
 
 ## Güncelleme ve geri alma

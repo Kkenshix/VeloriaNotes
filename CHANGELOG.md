@@ -1,5 +1,11 @@
 # Değişiklik Günlüğü
 
+## 1.1.2 - 2026-10-28
+
+- 1.1.1'deki kelime/satır boşluğu düzeltmeleri korundu; dosya, görsel, tablo ve liste seçimlerinin mevcut pano biçimleri korumaya alındı.
+- Boş Windows panosunda test sonunda hata oluşması düzeltildi; pano tüm biçimleriyle geri yüklenir.
+- 23 otomatik test ve 31 gerçek Electron arayüz senaryosu geçti.
+
 ## 1.1.1 - 2026-10-28
 
 - Ctrl+X ile kelime kesildiğinde iki yandaki boşlukların birleşip çift boşluk oluşturması düzeltildi; kesme yerinde tek boşluk kalır.

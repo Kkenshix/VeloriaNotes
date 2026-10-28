@@ -1,7 +1,7 @@
 @echo off
 setlocal
 chcp 65001 >nul
-title Veloria Notes v1.1.1 Kurulum
+title Veloria Notes v1.1.2 Kurulum
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0_kurulum.ps1"
 set "RC=%ERRORLEVEL%"
 if not "%RC%"=="0" (

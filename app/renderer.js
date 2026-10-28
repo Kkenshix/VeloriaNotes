@@ -2052,6 +2052,8 @@ function v111BindClipboard(rich){
   const copy=(event,cut)=>{
     const range=v685RangeInside(rich);if(!event.clipboardData||!range||range.collapsed)return;
     const fragment=range.cloneContents(),holder=document.createElement('div');holder.append(fragment);
+    // Media and structural selections keep their existing native clipboard formats.
+    if(holder.querySelector('[data-veloria-inline-image],[data-veloria-inline-file],img,table,tr,td,th,ul,ol,li'))return;
     const selected=v111FragmentText(holder);event.clipboardData.setData('text/plain',selected);
     event.clipboardData.setData('text/html',v690SerializeRich(holder));event.preventDefault();
     if(!cut)return;
