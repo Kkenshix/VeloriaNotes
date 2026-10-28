@@ -1,0 +1,40 @@
+name: Build Windows installers
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+      - run: npm ci
+        working-directory: app
+      - run: npm run validate
+        working-directory: app
+      - run: npm run test:ui
+        working-directory: app
+      - run: npm run dist
+        working-directory: app
+      - name: Build web installer and checksums
+        shell: pwsh
+        run: |
+          $version=(Get-Content -Raw app/package.json | ConvertFrom-Json).version
+          & ./installer/build-web-installer.ps1 -Version $version
+          if ($LASTEXITCODE -ne 0) { throw 'Web installer build failed.' }
+          Get-ChildItem dist/*.exe | ForEach-Object { '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(),$_.Name } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Veloria-Notes-Windows
+          path: |
+            dist/*.exe
+            dist/SHA256SUMS.txt

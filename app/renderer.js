@@ -6,7 +6,8 @@ if (!api?.isDesktop) {
   return;
 }
 
-const VERSION='V1';
+const VERSION='V1.1';
+const editorUtils=window.VeloriaEditor;
 const now=()=>new Date().toISOString();
 const uid=(p='id')=>`${p}_${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`;
 const clone=x=>JSON.parse(JSON.stringify(x));
@@ -38,7 +39,7 @@ function v1SanitizeRichHtml(html){
     const out=document.createElement(tag.toLowerCase());
     if(node.className){const cls=String(node.className).split(/\s+/).filter(x=>/^[a-z0-9_-]{1,64}$/i.test(x)).slice(0,12).join(' ');if(cls)out.className=cls}
     if(tag==='A'){
-      const href=v1SafeHref(node.getAttribute('href'));if(href){out.setAttribute('href',href);out.setAttribute('rel','noopener noreferrer')}
+      const href=v1SafeHref(node.getAttribute('href'));if(href){out.setAttribute('href',href);out.setAttribute('rel','noopener noreferrer');if(node.hasAttribute('data-veloria-auto-link'))out.dataset.veloriaAutoLink='1'}
     }
     if(tag==='OL'){const start=Math.trunc(Number(node.getAttribute('start')));if(Number.isFinite(start)&&start>0&&start<100000)out.setAttribute('start',String(start))}
     if(tag==='TD'||tag==='TH')for(const a of ['colspan','rowspan']){const n=Math.trunc(Number(node.getAttribute(a)));if(n>1&&n<=100)out.setAttribute(a,String(n))}
@@ -50,6 +51,10 @@ function v1SanitizeRichHtml(html){
       const width=Math.max(100,Math.min(2400,Math.round(Number(node.getAttribute('data-width'))||Number.parseFloat(node.style.width)||240)));
       out.dataset.width=String(width);out.style.width=`${width}px`;out.setAttribute('contenteditable','false');
       const align=String(node.getAttribute('data-align')||'inline');if(['inline','left','right','center'].includes(align))out.dataset.align=align;
+    }
+    if(tag==='SPAN'&&node.hasAttribute('data-veloria-inline-file')){
+      out.dataset.veloriaInlineFile='1';out.dataset.nativePath=String(node.getAttribute('data-native-path')||'').slice(0,4096);
+      out.dataset.name=String(node.getAttribute('data-name')||'Dosya').slice(0,512);out.dataset.kind=node.getAttribute('data-kind')==='folder'?'folder':'file';
     }
     if(tag==='SPAN'&&node.getAttribute('contenteditable')==='false')out.setAttribute('contenteditable','false');
     if(tag==='IMG'){out.setAttribute('alt',String(node.getAttribute('alt')||'Görsel').slice(0,512));out.setAttribute('draggable','false')}
@@ -102,7 +107,7 @@ let queueItems=new Map();
 let queueCleanupTimer=null;
 function defaultUi(){return {openTabs:[],scroll:{},folderOpen:{},folderPrefs:{},blockCollapsed:{},galleryMode:'hybrid',thumbSize:'medium',showImageNames:true,selectedTab:'',defaultImageMode:'gallery',defaultImageWidth:240,defaultFileDisplay:'card',showAttachmentPaths:false}}
 let ui=defaultUi();
-async function loadUiFromDisk(){try{const r=await api.readUiState();if(r?.text)ui={...defaultUi(),...JSON.parse(r.text)}}catch{ui=defaultUi()}}
+async function loadUiFromDisk(){try{const r=await api.readUiState();if(r?.text)ui={...defaultUi(),...JSON.parse(r.text)}}catch{ui=defaultUi()}ui.openTabs=[];ui.selectedTab=''}
 function syncOpenTabs(){if(!Array.isArray(tabs))return;ui.openTabs=tabs.map(t=>({kind:t.kind,id:t.id||'',path:t.path||'',name:t.name||'',title:t.title||t.name||''}))}
 function saveUi(){try{syncOpenTabs();api.saveUiState(JSON.stringify(ui)).catch(()=>{})}catch{}}
 
@@ -184,7 +189,7 @@ async function loadState(){
   info=await api.getInfo().catch(()=>({rootPath:'',localOnly:true}));
   await loadUiFromDisk();
   let disk=null;
-  try{const r=await api.readAppState();if(r?.text)disk=JSON.parse(r.text)}catch{}
+  try{const r=await api.readAppState();if(r?.text)disk=JSON.parse(r.text)}catch{throw new Error('Not verisi okunamadı. Mevcut dosya korundu; Kurtarma ekranından bir yedek seçebilirsin.')}
   state=migrateState(disk);
   document.body.classList.toggle('light',state.theme==='light');
   captureWorkspace();
@@ -432,7 +437,7 @@ function renderBlock(b,i){const common=`data-block="${attr(b.id)}" data-index="$
 function renderAttachmentBlock(b,common,tools){const img=isImage(b.name),mode=img?(b.displayMode||'gallery'):'list',size=b.imageSize||'medium',path=b.nativePath||b.storagePath||'',missing=attachmentPathMissing(path);const cls=img?`${mode} ${size}`:'list';return `<div class="block-wrap attachment-wrap ${img&&mode==='gallery'?'gallery-block':''}" ${common}>${tools}<div class="attachment ${cls} ${missing?'missing':''}" data-attachment="${attr(b.id)}"><div class="${img?'attachment-image':''}">${img&&!missing?`<img data-img-block="${attr(b.id)}" alt="${attr(b.name||'')}">`:''}</div><div class="attachment-meta"><span class="file-glyph">${missing?'!':esc(iconForFile(b.name))}</span><span class="attachment-name"><strong>${esc(b.name||'Dosya')}</strong><small>${missing?'Dosya bulunamadı':fmtBytes(b.size||0)+(path?' · '+esc(path):'')}</small></span><span class="attachment-actions">${missing?`<button class="mini" onclick="v68RelinkAttachment('${attr(b.id)}')">Yeniden bağla</button>`:`<button class="mini" onclick="v68AttachmentOpen('${attr(b.id)}')">Aç</button>`}<button class="mini" onclick="v68AttachmentMenu(event,'${attr(b.id)}')">⋮</button></span></div></div></div>`}
 function bindBlocks(p){
   for(const wrap of el.content.querySelectorAll('[data-block]')){const b=p.blocks.find(x=>x.id===wrap.dataset.block);if(!b)continue;
-    const rich=wrap.querySelector('[data-edit="rich"]');if(rich)rich.addEventListener('input',()=>{if(b.type==='richtext')b.html=v690SerializeRich(rich);else b.text=rich.innerText;markTabDirty('page',p.id,true);touchPage(p)});
+    const rich=wrap.querySelector('[data-edit="rich"]');if(rich)rich.addEventListener('input',()=>{b.type='richtext';b.html=v690SerializeRich(rich);delete b.text;markTabDirty('page',p.id,true);touchPage(p)});
     const head=wrap.querySelector('[data-edit="heading"]');if(head)head.addEventListener('input',()=>{b.text=head.value;markTabDirty('page',p.id,true);touchPage(p)});
     const code=wrap.querySelector('[data-edit="code"]');if(code){code.addEventListener('input',()=>{b.code=code.value;markTabDirty('page',p.id,true);touchPage(p)});code.addEventListener('keydown',codeKeys)}
     const lt=wrap.querySelector('[data-edit="link-title"]'),lu=wrap.querySelector('[data-edit="link-url"]');if(lt)lt.oninput=()=>{b.title=lt.value;markTabDirty('page',p.id,true);touchPage(p)};if(lu)lu.oninput=()=>{b.url=lu.value;markTabDirty('page',p.id,true);touchPage(p)}
@@ -521,9 +526,9 @@ window.v68ApplyFileMove=async()=>{const ps=window.__v68MoveFiles||[],p=page(docu
 async function renderFile(path,name){
   if(externalWatchTimer)clearInterval(externalWatchTimer);fileEditor=null;el.statusContext.textContent=name;el.statusDetails.textContent='';
   if(isText(name)){
-    try{const d=await api.readManagedText(path);el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><span>${esc(iconForFile(name))}</span><strong>${esc(name)}</strong><span id="editorState" style="color:var(--muted);font-size:9px">${fmtBytes(d.size||0)}</span><button class="tool" onclick="v68FormatFile()">Biçimlendir</button><button class="tool primary" onclick="v68SaveFile()">Kaydet</button><button class="tool" onclick="v68FileReveal(${js(path)})">Windows'ta göster</button></div><div class="editor-body"><pre id="lineNums" class="line-nums"></pre><textarea id="codeArea" class="code-area" spellcheck="false"></textarea></div></div>`;const area=document.getElementById('codeArea'),nums=document.getElementById('lineNums');area.value=d.text||'';let recovered=false;try{const dr=await api.readDraft(draftKey(path));if(dr?.ok&&typeof dr.text==='string'&&dr.text!==area.value&&confirm('Bu dosya için kaydedilmemiş yerel bir Veloria taslağı bulundu. Geri yüklensin mi?')){area.value=dr.text;recovered=true}}catch{}fileEditor={path,name,area,nums,mtimeMs:d.mtimeMs||0,dirty:recovered,lastDiskMtime:d.mtimeMs||0};if(recovered){markTabDirty('file',path,true);document.getElementById('editorState').textContent='Kurtarılan taslak'}updateLineNums();area.addEventListener('input',()=>{fileEditor.dirty=true;markTabDirty('file',path,true);document.getElementById('editorState').textContent='Değiştirildi';updateLineNums();saveDraft(path,area.value)});area.addEventListener('scroll',()=>{nums.scrollTop=area.scrollTop;ui.scroll[`file:${norm(path)}`]=area.scrollTop;saveUi()});area.addEventListener('keydown',codeKeys);externalWatchTimer=setInterval(()=>checkExternalFile(),4000);el.statusDetails.textContent=`${extOf(name)} · UTF-8 · ${area.value.split('\n').length} satır`;return}catch(e){toast(e.message,'error')}
+    try{const d=await api.readManagedText(path);if(!v11StillViewingFile(path))return;el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><span>${esc(iconForFile(name))}</span><strong>${esc(name)}</strong><span id="editorState" style="color:var(--muted);font-size:9px">${fmtBytes(d.size||0)}</span><button class="tool" onclick="v68FormatFile()">Biçimlendir</button><button class="tool primary" onclick="v68SaveFile()">Kaydet</button><button class="tool" onclick="v68FileReveal(${js(path)})">Windows'ta göster</button></div><div class="editor-body"><pre id="lineNums" class="line-nums"></pre><textarea id="codeArea" class="code-area" spellcheck="false"></textarea></div></div>`;const area=document.getElementById('codeArea'),nums=document.getElementById('lineNums');area.value=d.text||'';let recovered=false;try{const dr=await api.readDraft(draftKey(path));if(dr?.ok&&typeof dr.text==='string'&&dr.text!==area.value&&confirm('Bu dosya için kaydedilmemiş yerel bir Veloria taslağı bulundu. Geri yüklensin mi?')){area.value=dr.text;recovered=true}}catch{}if(!v11StillViewingFile(path)||!area.isConnected)return;fileEditor={path,name,area,nums,mtimeMs:d.mtimeMs||0,dirty:recovered,lastDiskMtime:d.mtimeMs||0};if(recovered){markTabDirty('file',path,true);document.getElementById('editorState').textContent='Kurtarılan taslak'}updateLineNums();area.addEventListener('input',()=>{fileEditor.dirty=true;markTabDirty('file',path,true);document.getElementById('editorState').textContent='Değiştirildi';updateLineNums();saveDraft(path,area.value)});area.addEventListener('scroll',()=>{nums.scrollTop=area.scrollTop;ui.scroll[`file:${norm(path)}`]=area.scrollTop;saveUi()});area.addEventListener('keydown',codeKeys);externalWatchTimer=setInterval(()=>checkExternalFile(),4000);el.statusDetails.textContent=`${extOf(name)} · UTF-8 · ${area.value.split('\n').length} satır`;return}catch(e){toast(e.message,'error')}
   }
-  try{const p=await api.previewManagedFile(path);let body;if(p.kind==='image')body=`<div class="preview-shell"><img src="${attr(p.url)}"></div>`;else if(p.kind==='video')body=`<div class="preview-shell"><video src="${attr(p.url)}" controls></video></div>`;else if(p.kind==='audio')body=`<div class="preview-shell"><audio src="${attr(p.url)}" controls></audio></div>`;else if(p.kind==='pdf')body=`<div class="preview-shell"><iframe src="${attr(p.url)}"></iframe></div>`;else body=`<div class="empty-main"><div><h2>${esc(name)}</h2><div>Bu dosya Windows'taki varsayılan uygulamayla açılır.</div><button class="btn primary" style="margin-top:14px" onclick="v68OpenExternalFile(${js(path)})">Windows'ta Aç</button></div></div>`;el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><strong>${esc(name)}</strong><button class="tool" onclick="v68FileReveal(${js(path)})">Windows'ta göster</button><button class="tool primary" onclick="v68OpenExternalFile(${js(path)})">Harici aç</button></div>${body}</div>`}catch(e){el.content.innerHTML=`<div class="empty-main"><div>${esc(e.message||'Dosya açılamadı')}</div></div>`}
+  try{const p=await api.previewManagedFile(path);if(!v11StillViewingFile(path))return;let body;if(p.kind==='image')body=`<div class="preview-shell"><img src="${attr(p.url)}"></div>`;else if(p.kind==='video')body=`<div class="preview-shell"><video src="${attr(p.url)}" controls></video></div>`;else if(p.kind==='audio')body=`<div class="preview-shell"><audio src="${attr(p.url)}" controls></audio></div>`;else if(p.kind==='pdf')body=`<div class="preview-shell"><iframe src="${attr(p.url)}"></iframe></div>`;else body=`<div class="empty-main"><div><h2>${esc(name)}</h2><div>Bu dosya Windows'taki varsayılan uygulamayla açılır.</div><button class="btn primary" style="margin-top:14px" onclick="v68OpenExternalFile(${js(path)})">Windows'ta Aç</button></div></div>`;el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><strong>${esc(name)}</strong><button class="tool" onclick="v68FileReveal(${js(path)})">Windows'ta göster</button><button class="tool primary" onclick="v68OpenExternalFile(${js(path)})">Harici aç</button></div>${body}</div>`}catch(e){el.content.innerHTML=`<div class="empty-main"><div>${esc(e.message||'Dosya açılamadı')}</div></div>`}
 }
 function updateLineNums(){if(!fileEditor)return;const n=fileEditor.area.value.split('\n').length;fileEditor.nums.textContent=Array.from({length:n},(_,i)=>i+1).join('\n');el.statusDetails.textContent=`${extOf(fileEditor.name)} · UTF-8 · ${n} satır`}
 window.v68SaveFile=async()=>{if(!fileEditor)return;try{const r=await api.writeManagedTextSafe(fileEditor.path,fileEditor.area.value,fileEditor.mtimeMs);if(r?.conflict){const choice=await choiceModal('Dosya dışarıdan değişti',[{value:'reload',title:'Diskteki sürümü yükle',sub:'Veloria’daki kaydedilmemiş metin değiştirilir.'},{value:'overwrite',title:'Benim sürümümü kaydet',sub:'Diskteki yeni sürümün üzerine yaz.'}]);if(choice==='reload'){const d=await api.readManagedText(fileEditor.path);fileEditor.area.value=d.text;fileEditor.mtimeMs=d.mtimeMs;fileEditor.dirty=false;updateLineNums();markTabDirty('file',fileEditor.path,false)}else if(choice==='overwrite'){const w=await api.writeManagedText(fileEditor.path,fileEditor.area.value);fileEditor.mtimeMs=w.mtimeMs;fileEditor.lastDiskMtime=w.mtimeMs||fileEditor.lastDiskMtime;fileEditor.dirty=false;markTabDirty('file',fileEditor.path,false)}return}fileEditor.mtimeMs=r.mtimeMs;fileEditor.lastDiskMtime=r.mtimeMs||fileEditor.lastDiskMtime;fileEditor.dirty=false;markTabDirty('file',fileEditor.path,false);document.getElementById('editorState').textContent=`Kaydedildi · ${fmtBytes(r.size||0)}`;clearDraft(fileEditor.path);toast('Dosya kaydedildi')}catch(e){toast(e.message,'error')}};
@@ -582,7 +587,7 @@ function gotoLine(){if(!fileEditor)return;const n=Math.max(1,Number(prompt('Sat�
 async function workspaceSearch(){const q=prompt('Tüm Veloria içinde ara:');if(!q)return;const low=q.toLocaleLowerCase('tr'),hits=[];for(const p of pages()){const text=(p.title+' '+pagePlainText(p)).toLocaleLowerCase('tr');if(text.includes(low))hits.push({kind:'page',id:p.id,title:p.title,sub:catPath(p.categoryId).join(' / ')})}for(const f of scan.files){if(String(f.name+' '+f.relativePath).toLocaleLowerCase('tr').includes(low))hits.push({kind:'file',path:f.nativePath,title:f.name,sub:f.relativePath})}modal(`<div class="modal-head"><h3>Arama · ${esc(q)}</h3><span class="grow"></span><button class="icon-btn" onclick="v68CloseModal()">✕</button></div><div class="modal-body">${hits.slice(0,200).map(x=>`<button class="file-row" style="width:100%;grid-template-columns:34px minmax(0,1fr) 28px" onclick="v68CloseModal();${x.kind==='page'?`v68OpenPage('${attr(x.id)}')`:`v68FileOpen(${js(x.path)})`}"><span class="file-glyph">${x.kind==='page'?'▤':esc(iconForFile(x.title))}</span><span class="name"><strong>${esc(x.title)}</strong><small>${esc(x.sub||'')}</small></span><span>↵</span></button>`).join('')||'<div style="color:var(--muted)">Sonuç yok.</div>'}</div>`,true)}
 async function quickPreviewSelected(){if(currentView.kind!=='folder'||fileSelection.size!==1)return;const path=selectedFilePaths()[0];if(!path)return;try{const p=await api.previewManagedFile(path);let body='';if(p.kind==='image')body=`<div class="preview-shell" style="height:65vh"><img src="${attr(p.url)}"></div>`;else if(p.kind==='video')body=`<div class="preview-shell" style="height:65vh"><video src="${attr(p.url)}" controls></video></div>`;else if(p.kind==='audio')body=`<div style="padding:30px"><audio src="${attr(p.url)}" controls style="width:100%"></audio></div>`;else if(p.kind==='pdf')body=`<div class="preview-shell" style="height:70vh"><iframe src="${attr(p.url)}"></iframe></div>`;else if(p.kind==='text')body=`<pre style="white-space:pre-wrap;max-height:65vh;overflow:auto;padding:16px;background:#020617">${esc(p.text||'')}</pre>`;else body=`<div style="padding:30px;color:var(--muted)">Hızlı önizleme yok. Enter/çift tık ile aç.</div>`;modal(`<div class="modal-head"><h3>${esc(baseName(path))}</h3><span class="grow"></span><button class="icon-btn" onclick="v68CloseModal()">✕</button></div>${body}`,true)}catch(e){toast(e.message,'error')}}
 function commandPalette(){const cmds=[['Yeni kök klasör',()=>document.getElementById('rootAdd').click()],['Hızlı aç',quickOpen],['Depolama analizi',()=>showStorage()],['Ayarlar',()=>settings('general')],['Çalışma alanları',workspaceMenu],['Geri al',undo]];modal(`<div class="modal-head"><h3>Komutlar</h3><span class="grow"></span><button class="icon-btn" onclick="v68CloseModal()">✕</button></div><div class="modal-body"><input id="cmdQ" autofocus placeholder="Komut ara…" style="width:100%;padding:10px;border-radius:9px"><div id="cmdList" style="margin-top:8px"></div></div>`);const q=document.getElementById('cmdQ'),box=document.getElementById('cmdList');const draw=()=>{const x=q.value.toLocaleLowerCase('tr');box.innerHTML=cmds.map((c,i)=>({c,i})).filter(o=>!x||o.c[0].toLocaleLowerCase('tr').includes(x)).map(o=>`<button class="file-row" style="width:100%;grid-template-columns:minmax(0,1fr) 28px" onclick="v68RunCommand(${o.i})"><span class="name"><strong>${esc(o.c[0])}</strong></span><span>↵</span></button>`).join('')};window.__v68Commands=cmds;window.v68RunCommand=i=>{const fn=window.__v68Commands?.[i]?.[1];closeModal();fn?.()};q.oninput=draw;draw()}
-function globalKeys(e){const editable=e.target.matches?.('input,textarea,[contenteditable="true"],select');const cmd=e.ctrlKey||e.metaKey;
+function globalKeys(e){const editable=!!e.target.closest?.('input,textarea,[contenteditable="true"],select');const cmd=e.ctrlKey||e.metaKey;
  if(cmd&&e.shiftKey&&e.key.toLowerCase()==='p'){e.preventDefault();commandPalette();return}
  if(cmd&&e.key.toLowerCase()==='p'){e.preventDefault();quickOpen();return}
  if(cmd&&e.shiftKey&&e.key.toLowerCase()==='f'){e.preventDefault();workspaceSearch();return}
@@ -1053,7 +1058,15 @@ function v685RangeInside(target){
 }
 function v685SetCaretAfter(node){const sel=getSelection(),r=document.createRange();r.setStartAfter(node);r.collapse(true);sel.removeAllRanges();sel.addRange(r)}
 function v685InsertHtmlEditable(target,html){
+  if(!html)return false;v692HistoryCheckpoint(target);
   const sel=window.getSelection?.();if(!sel)return false;let range=v685RangeInside(target);if(!range){range=document.createRange();range.selectNodeContents(target);range.collapse(false)}
+  try{target.focus({preventScroll:true})}catch{target.focus()}
+  sel.removeAllRanges();sel.addRange(range);
+  // Chromium's editing command replaces its empty-line placeholder correctly.
+  // Inserting a DOM fragment directly leaves an extra trailing DIV/BR behind.
+  let emitted=false;const onInput=()=>{emitted=true};target.addEventListener('input',onInput,{once:true});
+  let inserted=false;try{inserted=document.execCommand('insertHTML',false,html)}finally{target.removeEventListener('input',onInput)}
+  if(inserted){if(!emitted)v685DispatchInput(target,'insertFromPaste');return true}
   range.deleteContents();const tpl=document.createElement('template');tpl.innerHTML=html;const frag=tpl.content,last=frag.lastChild;range.insertNode(frag);
   if(last&&last.isConnected)v685SetCaretAfter(last);try{target.focus({preventScroll:true})}catch{target.focus()}
   target.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromPaste',data:null}));return true
@@ -1064,7 +1077,7 @@ function v685InsertPlainControl(target,text){
 function v685HandlePaste(e){
   const target=e.currentTarget;if(!target||!el.content)return;const snap=v685ViewportSnapshot(target),clip=v685Clipboard(e),editable=target.isContentEditable||target.getAttribute?.('contenteditable')==='true',control=target instanceof HTMLTextAreaElement;
   if(editable){
-    e.preventDefault();let html='';if(clip.html&&v685HasStructuredHtml(clip.html))html=v685SanitizeClipboardHtml(clip.html);if(!html&&clip.text)html=v685MarkdownToHtml(clip.text);v685InsertHtmlEditable(target,html||'<p><br></p>')
+    e.preventDefault();const html=clip.text?editorUtils.textToHtml(clip.text):v685SanitizeClipboardHtml(clip.html);v685InsertHtmlEditable(target,html)
   }else if(control&&v685IsVeryLargePaste(clip.text)){
     e.preventDefault();v685InsertPlainControl(target,clip.text)
   }
@@ -1151,8 +1164,8 @@ function v685RichKeydown(e){
     if(e.shiftKey&&k==='8'){e.preventDefault();document.execCommand('insertUnorderedList',false);return}
     if(low==='`'&&v685WrapSelectionTag(t,'code')){e.preventDefault();return}
   }
-  if(k==='Enter'&&v685TryEnterRule(t)){e.preventDefault();return}
-  if(v685TryInputRule(t,k)){e.preventDefault();return}
+  // Literal typing never invokes Markdown rules. Explicit format shortcuts still work.
+  if(!mod&&!e.altKey&&!e.isComposing)v692HistoryCheckpoint(t);
   if(k==='Tab'){
     const r=v685RichSelection(t),li=r?.startContainer?.parentElement?.closest?.('li');if(li&&t.contains(li)){e.preventDefault();document.execCommand(e.shiftKey?'outdent':'indent',false);return}
   }
@@ -1264,7 +1277,7 @@ function v685RichHtmlToMarkdown(html){
 }
 pagePlainText=function(p){
   const out=[];for(const b of p.blocks||[]){if(b.type==='text')out.push(b.text||'');else if(b.type==='richtext')out.push(v685RichHtmlToMarkdown(b.html||''));else if(b.type==='heading')out.push(`${'#'.repeat(Math.max(1,Math.min(6,Number(b.level)||2)))} ${b.text||''}`);else if(b.type==='link')out.push(b.url?`[${b.title||b.url}](${b.url})`:(b.title||''));else if(b.type==='code')out.push(`\`\`\`${b.language&&b.language!=='text'?b.language:''}\n${b.code||''}\n\`\`\``);else if(b.type==='divider')out.push('---')}
-  return `${p.title||'İsimsiz'}\r\n\r\n${out.filter(Boolean).join('\r\n\r\n').replace(/\n/g,'\r\n')}`
+  return `${p.title||'İsimsiz'}\n\n${out.filter(Boolean).join('\n\n')}`.replace(/\r\n?/g,'\n').replace(/\n/g,'\r\n')
 };
 
 
@@ -1294,6 +1307,7 @@ function v690ClipboardImageFiles(e){
   return out
 }
 function v690InsertMarker(target,range=null){
+  v692HistoryCheckpoint(target);
   if(!target)return null;let r=range||v685RangeInside(target);if(!r){r=document.createRange();r.selectNodeContents(target);r.collapse(false)}
   r.deleteContents();const marker=document.createElement('span');marker.dataset.v690InsertMarker='1';marker.setAttribute('contenteditable','false');marker.setAttribute('aria-hidden','true');r.insertNode(marker);return marker
 }
@@ -1344,7 +1358,7 @@ function v690HasContentAfterCaret(target){
 }
 function v690UnlockRichHeight(target){target.classList.remove('v690-height-locked');delete target.dataset.v690HeightLocked;target.style.removeProperty('height');target.style.removeProperty('max-height');target.style.removeProperty('overflow-y')}
 function v690EnterHeightGuard(e){
-  if(e.key!=='Enter'||e.ctrlKey||e.metaKey||e.altKey)return;const target=e.currentTarget;if(target?.querySelector?.('[data-veloria-inline-image],[data-veloria-inline-file]')){v690UnlockRichHeight(target);return}if(v690HasContentAfterCaret(target)){if(target.dataset.v690HeightLocked!=='1'){const h=Math.ceil(target.getBoundingClientRect().height);target.dataset.v690HeightLocked='1';target.classList.add('v690-height-locked');target.style.height=`${h}px`;target.style.maxHeight=`${h}px`;target.style.overflowY='auto'}}else if(target.dataset.v690HeightLocked==='1')v690UnlockRichHeight(target)
+  if(e.key==='Enter')v690UnlockRichHeight(e.currentTarget)
 }
 const _v690BindSmartEditorsBase=v685BindSmartEditors;
 v685BindSmartEditors=function(){
@@ -1502,21 +1516,33 @@ v690SerializeRich=function(target){
 };
 
 function v692BlockIdForRich(rich){return rich?.closest?.('[data-block]')?.dataset?.block||''}
-function v692HistoryState(rich){const id=v692BlockIdForRich(rich);if(!id)return null;let h=v692History.get(id);if(!h){h={undo:[],redo:[]};v692History.set(id,h)}return h}
-function v692HistoryCheckpoint(rich){if(v692ApplyingHistory||!rich)return;const h=v692HistoryState(rich);if(!h)return;const html=v690SerializeRich(rich);if(h.undo[h.undo.length-1]!==html)h.undo.push(html);if(h.undo.length>V692_HISTORY_LIMIT)h.undo.shift();h.redo.length=0}
+function v11Selection(rich){
+  const sel=getSelection();if(!sel?.rangeCount||!rich.contains(sel.anchorNode)||!rich.contains(sel.focusNode))return null;
+  const point=(node,offset)=>{const path=[];while(node!==rich){path.unshift([...node.parentNode.childNodes].indexOf(node));node=node.parentNode}return{path,offset}};
+  return{anchor:point(sel.anchorNode,sel.anchorOffset),focus:point(sel.focusNode,sel.focusOffset)}
+}
+function v11RestoreSelection(rich,saved){
+  if(!saved)return;try{const point=p=>{let node=rich;for(const i of p.path)node=node.childNodes[Math.min(i,node.childNodes.length-1)]||node;return[node,Math.min(p.offset,node.nodeType===Node.TEXT_NODE?node.length:node.childNodes.length)]};const a=point(saved.anchor),f=point(saved.focus);rich.focus({preventScroll:true});getSelection().setBaseAndExtent(a[0],a[1],f[0],f[1])}catch{v692CaretEnd(rich)}
+}
+function v11Snapshot(rich){return{html:v690SerializeRich(rich),selection:v11Selection(rich)}}
+function v692HistoryState(rich){const id=v692BlockIdForRich(rich);if(!id)return null;let h=v692History.get(id);if(!h){h={undo:[],redo:[],current:v11Snapshot(rich),pending:false};v692History.set(id,h)}return h}
+function v692HistoryCheckpoint(rich){if(v692ApplyingHistory||!rich)return;const h=v692HistoryState(rich);if(!h)return;const snap=v11Snapshot(rich);if(h.undo.at(-1)?.html!==snap.html)h.undo.push(snap);else h.undo[h.undo.length-1]=snap;if(h.undo.length>V692_HISTORY_LIMIT)h.undo.shift();h.pending=true}
 function v692CaretEnd(rich){try{const r=document.createRange();r.selectNodeContents(rich);r.collapse(false);const sel=getSelection();sel.removeAllRanges();sel.addRange(r);rich.focus({preventScroll:true})}catch{try{rich.focus()}catch{}}}
 function v692SyncRich(rich,inputType='historyUndo'){
   if(!rich)return;v692ApplyingHistory=true;try{v685DispatchInput(rich,inputType,null)}finally{v692ApplyingHistory=false}
-  const p=currentView.kind==='page'?page(currentView.id):null;if(p)void v690HydrateInlineImages(p);v692CaretEnd(rich)
+  const p=currentView.kind==='page'?page(currentView.id):null;if(p)void v690HydrateInlineImages(p)
 }
-function v692UndoRich(rich){const h=v692HistoryState(rich);if(!h?.undo.length)return false;const cur=v690SerializeRich(rich),prev=h.undo.pop();if(prev===cur&&h.undo.length)return v692UndoRich(rich);h.redo.push(cur);v692ApplyingHistory=true;rich.innerHTML=prev;v692ApplyingHistory=false;v692SyncRich(rich,'historyUndo');return true}
-function v692RedoRich(rich){const h=v692HistoryState(rich);if(!h?.redo.length)return false;const cur=v690SerializeRich(rich),next=h.redo.pop();h.undo.push(cur);v692ApplyingHistory=true;rich.innerHTML=next;v692ApplyingHistory=false;v692SyncRich(rich,'historyRedo');return true}
+function v11ApplyHistory(rich,from,to,type){const h=v692HistoryState(rich);if(!h)return false;const current=v11Snapshot(rich);let snap;while(h[from].length){const candidate=h[from].pop();if(candidate.html!==current.html){snap=candidate;break}}if(!snap)return false;h[to].push(current);v692ApplyingHistory=true;try{rich.innerHTML=snap.html;v11RestoreSelection(rich,snap.selection)}finally{v692ApplyingHistory=false}v692SyncRich(rich,type);h.current=v11Snapshot(rich);h.pending=false;return true}
+function v692UndoRich(rich){return v11ApplyHistory(rich,'undo','redo','historyUndo')}
+function v692RedoRich(rich){return v11ApplyHistory(rich,'redo','undo','historyRedo')}
 function v692BindHistoryEditors(){
   const scope=el.content?.querySelector('#blocks');if(!scope)return;
   for(const rich of scope.querySelectorAll('[data-edit="rich"]')){
     rich.classList.add('v692-nowrap');
     if(rich.dataset.v692History==='1')continue;rich.dataset.v692History='1';
-    rich.addEventListener('beforeinput',e=>{if(v692ApplyingHistory||e.inputType==='historyUndo'||e.inputType==='historyRedo')return;v692HistoryCheckpoint(rich)},true)
+    v11LinkifyRich(rich);v692HistoryState(rich);
+    rich.addEventListener('beforeinput',e=>{if(v692ApplyingHistory)return;if(e.inputType==='historyUndo'||e.inputType==='historyRedo'){e.preventDefault();e.stopImmediatePropagation();if(e.inputType==='historyUndo')v692UndoRich(rich);else v692RedoRich(rich);return}v692HistoryCheckpoint(rich)},true);
+    rich.addEventListener('input',()=>{if(v692ApplyingHistory)return;v11LinkifyRich(rich);const h=v692HistoryState(rich),snap=v11Snapshot(rich);if(h.current.html!==snap.html){if(!h.pending&&h.undo.at(-1)?.html!==h.current.html)h.undo.push(h.current);if(h.undo.length>V692_HISTORY_LIMIT)h.undo.shift();h.redo.length=0}h.current=snap;h.pending=false},true)
   }
 }
 const _v692BindSmartBase=v685BindSmartEditors;
@@ -1594,7 +1620,7 @@ const _v692RenderFileBase=renderFile;
 renderFile=async function(path,name){
   if(externalWatchTimer)clearInterval(externalWatchTimer);fileEditor=null;el.statusContext.textContent=name;el.statusDetails.textContent='';
   if(!isText(name)){
-    try{const p=await api.previewManagedFile(path);
+    try{const p=await api.previewManagedFile(path);if(!v11StillViewingFile(path))return;
       if(p.kind==='image'){el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><strong>${esc(name)}</strong><span class="grow"></span><button class="tool" onclick="v68FileReveal(${js(path)})">Windows\u2019ta g\u00f6ster</button><button class="tool" onclick="v68CopyPath(${js(path)})">Yolu kopyala</button><button class="tool" onclick="v68OpenExternalFile(${js(path)})">Harici a\u00e7</button></div><div class="v692-draw-toolbar"><strong>Kalem</strong><input id="v692Color" type="color" value="#ff0000" oninput="v692ColorFromPicker()"><label>R <input id="v692R" type="number" min="0" max="255" value="255" oninput="v692RgbToPicker()"></label><label>G <input id="v692G" type="number" min="0" max="255" value="0" oninput="v692RgbToPicker()"></label><label>B <input id="v692B" type="number" min="0" max="255" value="0" oninput="v692RgbToPicker()"></label><button class="tool" onclick="v692ClearDrawing()">\u00c7izimi temizle</button><span>\u00c7izim bu \u00f6nizleme oturumu i\u00e7in ge\u00e7icidir.</span></div><div class="v692-draw-stage"><div class="v692-draw-inner"><img id="v692DrawImage" src="${attr(p.url)}"><canvas id="v692DrawCanvas"></canvas></div></div></div>`;v692InitDrawPreview();el.statusDetails.textContent=`G\u00f6rsel \u00b7 ${fmtBytes(p.size||0)}`;return}
       if(p.kind==='archive'){el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><strong>${esc(name)}</strong><span class="grow"></span><button class="tool" onclick="v68FileReveal(${js(path)})">Windows\u2019ta g\u00f6ster</button><button class="tool" onclick="v68OpenExternalFile(${js(path)})">Harici a\u00e7</button></div><div class="v692-browser"><div class="v692-browser-head"><input id="v692ArchiveSearch" placeholder="Ar\u015fiv i\u00e7inde ara\u2026"><span>${(p.entries||[]).length} \u00f6\u011fe${p.truncated?' +':''}</span></div>${p.warning?`<div class="v692-browser-warning">${esc(p.warning)}</div>`:''}<div class="v692-browser-list">${v692ArchiveRows(p.entries)}</div></div></div>`;v692BindBrowserFilter('v692ArchiveSearch','[data-v692-archive-row]');el.statusDetails.textContent=`${String(p.format||extOf(name)).toUpperCase()} \u00b7 ${(p.entries||[]).length} \u00f6\u011fe`;return}
       if(p.kind==='folder'){el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><strong>${esc(name)}</strong><span class="grow"></span><button class="tool" onclick="v68FileReveal(${js(path)})">Windows\u2019ta g\u00f6ster</button><button class="tool" onclick="v68OpenExternalFile(${js(path)})">Explorer\u2019da a\u00e7</button></div><div class="v692-browser"><div class="v692-browser-head"><input id="v692FolderSearch" placeholder="Klas\u00f6r i\u00e7inde ara\u2026"><span>${(p.entries||[]).length} \u00f6\u011fe${p.truncated?' +':''}</span></div><div class="v692-browser-list">${v692FolderRows(p.entries)}</div></div></div>`;v692BindBrowserFilter('v692FolderSearch','[data-v692-folder-row]');el.statusDetails.textContent=`Klas\u00f6r \u00b7 ${(p.entries||[]).length} \u00f6\u011fe`;return}
@@ -1713,7 +1739,7 @@ renderFile=async function(path,name){
   if(isText(name))return _v693RenderFileBase(path,name);
   if(externalWatchTimer)clearInterval(externalWatchTimer);fileEditor=null;el.statusContext.textContent=name;el.statusDetails.textContent='';
   try{
-    const p=await api.previewManagedFile(path);
+    const p=await api.previewManagedFile(path);if(!v11StillViewingFile(path))return;
     if(p.kind==='image'){el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><strong>${esc(name)}</strong><span class="grow"></span><button class="tool" onclick="v68FileReveal(${js(path)})">Windows’ta göster</button><button class="tool" onclick="v68CopyPath(${js(path)})">Yolu kopyala</button><button class="tool" onclick="v68OpenExternalFile(${js(path)})">Harici aç</button></div>${v693ImageStage(p.url)}</div>`;v692InitDrawPreview();el.statusDetails.textContent=`Görsel · ${fmtBytes(p.size||0)}`;return}
     if(p.kind==='archive'){v693ArchiveRootPath=path;el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><strong>${esc(name)}</strong><span class="grow"></span><button class="tool" onclick="v68FileReveal(${js(path)})">Windows’ta göster</button><button class="tool" onclick="v68OpenExternalFile(${js(path)})">Harici aç</button></div>${v693ArchiveBrowser(p,path)}</div>`;v692BindBrowserFilter('v692ArchiveSearch','[data-v692-archive-row]');el.statusDetails.textContent=`${String(p.format||extOf(name)).toUpperCase()} · ${(p.entries||[]).length} öğe`;return}
   }catch(e){el.content.innerHTML=`<div class="empty-main"><div>${esc(e?.message||'Dosya açılamadı')}</div></div>`;return}
@@ -1787,8 +1813,9 @@ function v694SyncNoteCardWidths(){
     v694WidthSyncRaf=0;const blocks=el.content?.querySelector('#blocks');if(!blocks)return;const cards=[...blocks.querySelectorAll(':scope > .block-wrap')];if(!cards.length)return;
     for(const card of cards){card.style.removeProperty('width');card.style.removeProperty('min-width')}
     blocks.style.removeProperty('width');
-    const viewport=Math.max(760,(el.content?.clientWidth||900)-90);let widest=viewport;
-    for(const card of cards){const body=card.querySelector('.block-body')||card;widest=Math.max(widest,Math.ceil(body.scrollWidth+24),Math.ceil(card.scrollWidth+4))}
+    const view=blocks.closest('.view'),style=getComputedStyle(view);
+    const viewport=Math.max(240,(el.content?.clientWidth||900)-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight));let widest=viewport;
+    for(const card of cards){const body=card.querySelector('.block-body')||card;widest=Math.max(widest,Math.ceil(body.scrollWidth+24))}
     widest=Math.min(1000000,widest);blocks.style.width=`${widest}px`;for(const card of cards){card.style.width=`${widest}px`;card.style.minWidth=`${widest}px`}for(const line of blocks.querySelectorAll(':scope > .insert-line'))line.style.width=`${widest}px`
   })
 }
@@ -1842,7 +1869,7 @@ const _v694RenderFileBase=renderFile;
 renderFile=async function(path,name){
   if(isImage(name)){
     if(externalWatchTimer)clearInterval(externalWatchTimer);fileEditor=null;el.statusContext.textContent=name;el.statusDetails.textContent='';
-    try{const p=await api.previewManagedFile(path);if(p.kind==='image'){el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><strong>${esc(name)}</strong><span class="grow"></span><button class="tool" onclick="v68FileReveal(${js(path)})">Windows’ta göster</button><button class="tool" onclick="v68CopyPath(${js(path)})">Yolu kopyala</button><button class="tool" onclick="v68OpenExternalFile(${js(path)})">Harici aç</button></div>${v693ImageStage(p.url,p.annotationUrl||'',path)}</div>`;v692InitDrawPreview();el.statusDetails.textContent=`Görsel · ${fmtBytes(p.size||0)}`;return}}catch(e){el.content.innerHTML=`<div class="empty-main"><div>${esc(e?.message||'Dosya açılamadı')}</div></div>`;return}
+    try{const p=await api.previewManagedFile(path);if(!v11StillViewingFile(path))return;if(p.kind==='image'){el.content.innerHTML=`<div class="file-editor"><div class="editor-head"><strong>${esc(name)}</strong><span class="grow"></span><button class="tool" onclick="v68FileReveal(${js(path)})">Windows’ta göster</button><button class="tool" onclick="v68CopyPath(${js(path)})">Yolu kopyala</button><button class="tool" onclick="v68OpenExternalFile(${js(path)})">Harici aç</button></div>${v693ImageStage(p.url,p.annotationUrl||'',path)}</div>`;v692InitDrawPreview();el.statusDetails.textContent=`Görsel · ${fmtBytes(p.size||0)}`;return}}catch(e){el.content.innerHTML=`<div class="empty-main"><div>${esc(e?.message||'Dosya açılamadı')}</div></div>`;return}
   }
   return _v694RenderFileBase(path,name)
 };
@@ -1916,7 +1943,7 @@ function v1BindEnterReset(){const scope=el.content?.querySelector('#blocks');if(
 // V1 code block renderer with line numbers.
 const _v1RenderBlockBase=renderBlock;
 renderBlock=function(b,i){if(b.type!=='code')return _v1RenderBlockBase(b,i);const collapsed=v684IsCollapsed(currentView.id,b.id),common=`data-block="${attr(b.id)}" data-index="${i}" ondragover="v68BlockOver(event,'${attr(b.id)}')" ondrop="v68BlockDrop(event,'${attr(b.id)}')"`,tools=`<div class="block-toolbar"><span class="block-grip" title="Sürükle" draggable="true" ondragstart="v68BlockDrag(event,'${attr(b.id)}')" ondragend="v68BlockDragEnd(event)">${iconSvg('grip','sm')}</span><button class="block-more" aria-label="İçerik menüsü" onclick="v68BlockMenu(event,'${attr(b.id)}')">${iconSvg('more','sm')}</button></div>`;return `<div class="block-wrap v684-note-card ${collapsed?'is-collapsed':''}" ${common}>${tools}${v684CollapseButton(b,collapsed)}${v684Summary(b)}<div class="block-body"><div class="v1-code-shell"><pre class="v1-code-lines" aria-hidden="true"></pre><textarea data-edit="code" class="code-area v684-code-area v1-code-area" spellcheck="false" wrap="off" placeholder="Kod veya düz metin…">${esc(b.code||'')}</textarea></div></div></div>`};
-function v1BindCodeEditors(){const scope=el.content?.querySelector('#blocks');if(!scope)return;for(const shell of scope.querySelectorAll('.v1-code-shell')){const area=shell.querySelector('.v1-code-area'),nums=shell.querySelector('.v1-code-lines');if(!area||!nums)continue;const update=()=>{const count=Math.max(1,area.value.split('\n').length);nums.textContent=Array.from({length:count},(_,i)=>i+1).join('\n')};update();if(area.dataset.v1Lines!=='1'){area.dataset.v1Lines='1';area.addEventListener('input',update);area.addEventListener('scroll',()=>{nums.scrollTop=area.scrollTop})}}}
+function v1BindCodeEditors(){const scope=el.content?.querySelector('#blocks');if(!scope)return;for(const shell of scope.querySelectorAll('.v1-code-shell')){const area=shell.querySelector('.v1-code-area'),nums=shell.querySelector('.v1-code-lines');if(!area||!nums)continue;v11BindControlHistory(area);const update=()=>{const count=Math.max(1,area.value.split('\n').length);nums.textContent=Array.from({length:count},(_,i)=>i+1).join('\n')};update();if(area.dataset.v1Lines!=='1'){area.dataset.v1Lines='1';area.addEventListener('input',update);area.addEventListener('scroll',()=>{nums.scrollTop=area.scrollTop})}}}
 
 const _v1RenderPageFinalBase=renderPage;
 renderPage=function(id){_v1RenderPageFinalBase(id);if(currentView.kind==='page'&&currentView.id===id){v1BindCodeEditors();v1BindEnterReset();v692EnhanceInlineMedia()}};
@@ -1956,16 +1983,105 @@ async function init(){
   api.onNavigate?.(p=>{if(p?.pageId&&page(p.pageId))openPage(p.pageId)});
   api.onShowFile?.(p=>{if(p?.path)openFile(p.path,p.name||baseName(p.path))});
   api.onImportRequest?.(async p=>{const mode=await choiceModal(`${p.count||1} dosya nasıl eklensin?`,[{value:'move',title:'Taşı',sub:'Kaynak konumdan kaldır.'},{value:'copy',title:'Kopyala',sub:'Orijinal yerinde kalsın.'}]);if(!mode)return;let target=state.activePageId&&page(state.activePageId);if(!target){const c=treeSelection?.kind==='folder'?cat(treeSelection.id):catChildren(null)[0];if(!c)return toast('Önce bir klasör oluştur','warn');target=createPage(c.id,'Yeni Sayfa')}try{const r=await api.acceptPendingImport(p.token,{importMode:mode,pageId:target.id,pageTitle:target.title,category:cat(target.categoryId)?.name||'Klasör',categoryPath:catPath(target.categoryId),blockId:uid('blk')});for(const f of r.files||[])target.blocks.push({id:uid('blk'),type:'attachment',name:f.name,size:f.size,nativePath:f.nativePath,relativePath:f.relativePath,displayMode:isImage(f.name)?(ui.defaultImageMode||'gallery'):'list',imageSize:'medium',imageWidth:Number(ui.defaultImageWidth)||240,fileDisplay:ui.defaultFileDisplay||'card',showPath:null});if((r.files||[]).length)touchPage(target);await refreshScan();openPage(target.id);const errs=(r.errors||[]).filter(x=>!x.warning),warns=(r.errors||[]).filter(x=>x.warning);if(errs.length)toast(`${(r.files||[]).length} dosya eklendi · ${errs.length} dosya başarısız: ${errs[0].error||errs[0].name}`,'error');else if(warns.length)toast(warns[0].error||'Dosya eklendi fakat kaynak yerinde kaldı','warn')}catch(e){await refreshScan().catch(()=>{});if(target&&page(target.id))openPage(target.id);toast(e.message,'error')}});
-  api.onQuickCaptureSubmit?.(p=>{const text=String(p?.text||'').trim();if(!text)return;let c=catChildren(null)[0];if(!c)c=createFolder('Genel');const pg=createPage(c.id,`Hızlı Not ${new Date().toLocaleDateString('tr-TR')}`);pg.blocks=[{id:uid('blk'),type:'richtext',html:v685MarkdownToHtml(text)}];touchPage(pg);openPage(pg.id)});
+  api.onQuickCaptureSubmit?.(p=>{const text=String(p?.text||'').trim();if(!text)return;let c=catChildren(null)[0];if(!c)c=createFolder('Genel');const pg=createPage(c.id,`Hızlı Not ${new Date().toLocaleDateString('tr-TR')}`);pg.blocks=[{id:uid('blk'),type:'richtext',html:editorUtils.textToHtml(text)}];touchPage(pg);openPage(pg.id)});
   api.onLockRequest?.(()=>showLock());
   const lock=await api.lockStatus().catch(()=>({enabled:false}));
-  const selected=tabs.find(t=>t.key===ui.selectedTab)||tabs[0];if(selected)activateTab(selected.key);else if(state.activePageId&&page(state.activePageId))openPage(state.activePageId);else openNearestView();
+  state.activePageId=null;currentView={kind:'empty',id:'',path:''};ui.selectedTab='';
   renderAll();
   appReady=true;initError=null;
   syncAllCategoryDirectories().then(()=>refreshScan()).catch(e=>console.warn('Veloria directory sync:',e));
   if(lock?.enabled)showLock();
   setInterval(()=>refreshScan().catch(()=>{}),60000);
 }
+
+// v1.1: stable literal text editing, external links and session-only tabs.
+function v11StillViewingFile(path){return currentView.kind==='file'&&norm(currentView.path)===norm(path)}
+function v11BindControlHistory(area){
+  if(area.dataset.v11History)return;area.dataset.v11History='1';
+  const snapshot=()=>({value:area.value,start:area.selectionStart,end:area.selectionEnd,direction:area.selectionDirection});
+  let current=snapshot(),applying=false;const history={undo:[],redo:[]};
+  const apply=(from,to)=>{const present=snapshot();let previous;while(history[from].length){const candidate=history[from].pop();if(candidate.value!==present.value){previous=candidate;break}}if(!previous)return;history[to].push(present);applying=true;try{area.value=previous.value;area.setSelectionRange(previous.start,previous.end,previous.direction);v685DispatchInput(area,from==='undo'?'historyUndo':'historyRedo')}finally{applying=false}current=snapshot()};
+  area.addEventListener('beforeinput',e=>{if(e.inputType==='historyUndo'||e.inputType==='historyRedo'){e.preventDefault();apply(e.inputType==='historyUndo'?'undo':'redo',e.inputType==='historyUndo'?'redo':'undo')}else current=snapshot()},true);
+  area.addEventListener('keydown',e=>{current=snapshot();if((e.ctrlKey||e.metaKey)&&!e.altKey){const k=e.key.toLowerCase();if(k==='z'||k==='y'){e.preventDefault();e.stopImmediatePropagation();const redo=k==='y'||e.shiftKey;apply(redo?'redo':'undo',redo?'undo':'redo')}}},true);
+  area.addEventListener('input',()=>{if(applying)return;if(current.value!==area.value){history.undo.push(current);if(history.undo.length>120)history.undo.shift();history.redo.length=0}current=snapshot()},true);
+}
+const v11RenderFileBase=renderFile;
+renderFile=async function(path,name){await v11RenderFileBase(path,name);if(fileEditor?.area)v11BindControlHistory(fileEditor.area)};
+function v11LinkifyRich(rich){
+  const selection=getSelection();
+  const offset=node=>{const r=document.createRange();r.selectNodeContents(rich);r.setEnd(node[0],node[1]);return r.toString().length};
+  let saved=null;
+  if(selection?.rangeCount&&rich.contains(selection.anchorNode)&&rich.contains(selection.focusNode))saved={anchor:offset([selection.anchorNode,selection.anchorOffset]),focus:offset([selection.focusNode,selection.focusOffset]),anchorNode:selection.anchorNode,anchorOffset:selection.anchorOffset,focusNode:selection.focusNode,focusOffset:selection.focusOffset};
+  let changed=false;
+  for(const a of rich.querySelectorAll('a[data-veloria-auto-link]')){
+    a.replaceWith(document.createTextNode(a.textContent||''));changed=true;
+  }
+  rich.normalize();
+  const walker=document.createTreeWalker(rich,NodeFilter.SHOW_TEXT),nodes=[];let node;
+  while((node=walker.nextNode()))if(!node.parentElement.closest('a,pre,code,[contenteditable="false"]'))nodes.push(node);
+  for(const text of nodes){if(!editorUtils.findLinks(text.nodeValue||'').length)continue;const tpl=document.createElement('template');tpl.innerHTML=editorUtils.textToHtml(text.nodeValue);text.replaceWith(tpl.content);changed=true}
+  if(changed&&saved){
+    const point=value=>{const w=document.createTreeWalker(rich,NodeFilter.SHOW_TEXT);let n,last=null;while((n=w.nextNode())){last=n;if(value<=n.length)return[n,value];value-=n.length}return last?[last,last.length]:[rich,0]};
+    const preserved=(node,position,value)=>node!==rich&&node.isConnected?[node,Math.min(position,node.nodeType===Node.TEXT_NODE?node.length:node.childNodes.length)]:point(value);
+    const a=preserved(saved.anchorNode,saved.anchorOffset,saved.anchor),f=preserved(saved.focusNode,saved.focusOffset,saved.focus);selection.setBaseAndExtent(a[0],a[1],f[0],f[1]);
+  }
+}
+el.content.addEventListener('click',e=>{
+  const anchor=e.target.closest?.('[data-edit="rich"] a[href]');if(!anchor)return;
+  e.preventDefault();e.stopPropagation();const href=v1SafeHref(anchor.getAttribute('href'));if(href)api.openExternal(href).catch(()=>toast('Bağlantı açılamadı. Varsayılan tarayıcı ayarını kontrol et.','error'));
+});
+el.content.addEventListener('mousedown',e=>{if(e.button===0&&e.target.closest?.('[data-edit="rich"] a[href]'))e.preventDefault()});
+
+async function v11CloseTabs(keys){
+  const closing=new Set(keys);if(!closing.size)return;closeContext();
+  if(fileEditor?.dirty&&closing.has(`file:${norm(fileEditor.path)}`)){
+    try{await api.saveDraft(draftKey(fileEditor.path),fileEditor.area.value)}catch{toast('Taslak kaydedilemedi; dosya sekmesi açık bırakıldı.','error');return}
+  }
+  const index=tabs.findIndex(t=>t.key===ui.selectedTab),activeClosed=closing.has(ui.selectedTab);
+  saveScroll();tabs=tabs.filter(t=>!closing.has(t.key));
+  if(activeClosed){const next=tabs[Math.min(Math.max(0,index-1),tabs.length-1)];if(next)activateTab(next.key);else{ui.selectedTab='';state.activePageId=null;currentView={kind:'empty',id:'',path:''};if(externalWatchTimer)clearInterval(externalWatchTimer);renderContent()}}
+  renderTabs();saveUi();
+}
+closeTab=function(key,e){e?.stopPropagation();return v11CloseTabs([key])};
+function v11TabMenu(event,key){
+  event.preventDefault();event.stopPropagation();const index=tabs.findIndex(t=>t.key===key);if(index<0)return;
+  window.v11TabAction=mode=>{const keys=tabs.filter((t,i)=>mode==='all'||(mode==='this'&&t.key===key)||(mode==='other'&&t.key!==key)||(mode==='left'&&i<index)||(mode==='right'&&i>index)).map(t=>t.key);void v11CloseTabs(keys)};
+  showContext(event.clientX,event.clientY,`<button onclick="v11TabAction('this')">Sekmeyi kapat <small>Ctrl+W</small></button><button onclick="v11TabAction('other')" ${tabs.length<2?'disabled':''}>Diğer sekmeleri kapat</button><button onclick="v11TabAction('left')" ${index===0?'disabled':''}>Soldaki sekmeleri kapat</button><button onclick="v11TabAction('right')" ${index===tabs.length-1?'disabled':''}>Sağdaki sekmeleri kapat</button><hr><button onclick="v11TabAction('all')">Tüm sekmeleri kapat</button>`);
+}
+renderTabs=function(){
+  const fragment=document.createDocumentFragment();
+  for(const tab of tabs){
+    const model=tab.kind==='page'?page(tab.id):tab.kind==='folder'?cat(tab.id):fileMeta(tab.path),visual=v682Visual(model||{});
+    const button=document.createElement('button');button.type='button';button.className=`tab ${ui.selectedTab===tab.key?'active':''} ${visual.classes}`;button.dataset.tabKey=tab.key;button.title=tab.title||tab.name||'İsimsiz';
+    const styles=document.createElement('template');styles.innerHTML=`<span ${v682StyleAttr(visual)}></span>`;const style=styles.content.firstElementChild?.getAttribute('style');if(style)button.setAttribute('style',style);
+    const icon=document.createElement('span');icon.className='tab-icon';icon.innerHTML=iconSvg(tab.kind==='file'?fileIconKey(tab.name,model?.icon):model?.icon||(tab.kind==='page'?'note':'folder'),'sm');
+    const title=document.createElement('span');title.className='tab-title';title.textContent=button.title;button.append(icon,title);
+    if(tab.dirty){const dirty=document.createElement('span');dirty.className='dirty';dirty.textContent='•';button.append(dirty)}
+    const close=document.createElement('span');close.className='close';close.setAttribute('aria-label','Sekmeyi kapat');close.innerHTML=iconSvg('close','sm');close.addEventListener('click',e=>void closeTab(tab.key,e));button.append(close);
+    button.addEventListener('click',()=>activateTab(tab.key));button.addEventListener('contextmenu',e=>v11TabMenu(e,tab.key));button.addEventListener('auxclick',e=>{if(e.button===1){e.preventDefault();void closeTab(tab.key,e)}});fragment.append(button);
+  }
+  el.tabs.replaceChildren(fragment);
+};
+let v11LastRoute='',v11Motion=null;
+function v11AnimateView(){
+  const route=`${currentView.kind}:${currentView.id||norm(currentView.path)}`;if(route===v11LastRoute)return;v11LastRoute=route;v11Motion?.cancel();
+  if(!appReady||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const view=el.content.firstElementChild;if(view)v11Motion=view.animate([{opacity:.25,transform:'translateY(7px)'},{opacity:1,transform:'translateY(0)'}],{duration:160,easing:'ease-out'});
+}
+const v11OpenPageBase=openPage,v11OpenFolderBase=openFolder,v11OpenFileBase=openFile;
+openPage=function(id,tab=true){if(currentView.kind==='page'&&currentView.id===id&&el.content.querySelector('[data-page-view]'))return;v11OpenPageBase(id,tab);v11AnimateView()};
+openFolder=function(id,tab=true){if(currentView.kind==='folder'&&currentView.id===id&&el.content.querySelector('.folder-view'))return;v11OpenFolderBase(id,tab);v11AnimateView()};
+openFile=async function(path,name='',tab=true){if(currentView.kind==='file'&&norm(currentView.path)===norm(path)&&fileEditor?.area?.isConnected)return;await v11OpenFileBase(path,name,tab);v11AnimateView()};
+window.v68OpenFile=(path,name)=>openFile(path,name);window.v68CloseTab=closeTab;
+api.onBeforeClose?.(async()=>{
+  try{
+    if(!state){await api.readyToClose();return}
+    const pending=[];for(const id of pageTxtTimers.keys()){cancelPageTxtSave(id);const p=page(id);if(p)pending.push(schedulePageTxt(p,true))}
+    if(fileEditor?.dirty)pending.push(api.saveDraft(draftKey(fileEditor.path),fileEditor.area.value));
+    captureWorkspace();clearTimeout(saveTimer);pending.push(api.saveAppState(JSON.stringify(state)));syncOpenTabs();pending.push(api.saveUiState(JSON.stringify(ui)));
+    await Promise.all(pending);await api.readyToClose();
+  }catch{toast('Son değişiklikler kaydedilemedi. Pencere açık bırakıldı; tekrar kaydetmeyi dene.','error')}
+});
 
 window.v68OpenFolder=openFolder;window.v68OpenPage=openPage;window.v68Undo=undo;
 bindStaticUi();

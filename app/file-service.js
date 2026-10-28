@@ -123,14 +123,15 @@ async function uniqueDestination(dir, originalName) {
   throw new Error('Aynı isimde çok fazla dosya var.');
 }
 
-/* Native layout: <root>/<Folder>/<Subfolder>/.../<Page>/Dosyalar/<file> */
+/* New files live directly under <root>/<Folder>/<Subfolder>/.../<Page>/<file>.
+ * Existing absolute references remain valid; no bulk move or deletion is needed. */
 function pageFolderFromMeta(meta = {}) {
   const rawPath = Array.isArray(meta.categoryPath) && meta.categoryPath.length
     ? meta.categoryPath
     : [meta.category || 'Klasorler'];
   const folders = rawPath.map((x) => sanitizeSegment(x || 'Klasor', 'Klasor')).filter(Boolean).slice(0, 32);
   const page = sanitizeSegment(meta.pageTitle || 'Not', 'Not');
-  return path.join(...folders, page, 'Dosyalar');
+  return path.join(...folders, page);
 }
 
 

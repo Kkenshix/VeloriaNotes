@@ -1,0 +1,31 @@
+/* Paragraphs inserted by Enter have exactly one line of height and no added gaps. */
+.rich-block.v685-smart-rich p,
+.rich-block.v685-smart-rich div:not(.v690-inline-image):not(.v692-inline-file) {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+.rich-block.v685-smart-rich a { cursor: pointer !important; }
+.context button:disabled { opacity: .4; cursor: default; }
+/* Keep the title and note controls in the viewport, even when a long line scrolls. */
+#content .view { animation: none; }
+#content .view:has(#blocks) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+#content .view:has(#blocks) #blocks { min-width: 0; }
+#content .view:has(#blocks) .block-wrap { min-width: 0; width: 100%; }
+#content .view:has(#blocks) .rich-block.v692-nowrap {
+  box-sizing: border-box;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+.view-title-row { flex-wrap: wrap; }
+.view-title-row .view-menu { flex: 0 0 38px; }
+.view-title-row .note-collapse-actions { order: 5; }
+@media (max-width: 1100px) { .page-title { font-size: 28px; } }
+@media (prefers-reduced-motion: reduce) {
+  #content .view, #content .file-editor { animation: none !important; }
+}

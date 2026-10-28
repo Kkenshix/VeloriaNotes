@@ -8,6 +8,8 @@ const crypto = require('node:crypto');
 const os = require('node:os');
 
 function bootstrapDesktopRoot() {
+  // Development/QA instances never read or change the real desktop workspace.
+  if (!app.isPackaged && process.env.VELORIA_DEV_DATA_ROOT && path.isAbsolute(process.env.VELORIA_DEV_DATA_ROOT)) return path.resolve(process.env.VELORIA_DEV_DATA_ROOT);
   const home = process.env.USERPROFILE || os.homedir();
   let registryDesktop = '';
   if (process.platform === 'win32') {
@@ -41,7 +43,7 @@ const { promisify } = require('node:util');
 const { pathToFileURL, fileURLToPath } = require('node:url');
 const execFileAsync = promisify(execFile);
 const {
-  ensureDir, isInside, isInsideAny, moveSourcesToPage, copyDirectoryToPage, organizeManagedFile, pageFolderFromMeta, sanitizeSegment,
+  ensureDir, isInside, isInsideAny, moveSourcesToPage, copyDirectoryToPage, organizeManagedFile, pageFolderFromMeta, sanitizeSegment, uniqueDestination,
   refreshManagedIndex, removeIndexEntry, writeAtomic, hashFile, moveFile, copyFileVerified,
   findManagedRoot, replaceManagedVersion, listManagedVersions, restoreManagedVersion,
   moveManagedToTrash, listTrash, restoreTrashItem, purgeTrash
@@ -60,6 +62,13 @@ let appBackupDir = null;
 const pendingImports = new Map();
 const pendingRendererEvents = [];
 const transferControls = new Map();
+const saveQueues = new Map();
+function queueSave(key,task) {
+  const operation=(saveQueues.get(key)||Promise.resolve()).catch(()=>{}).then(task);
+  saveQueues.set(key,operation);
+  operation.finally(()=>{if(saveQueues.get(key)===operation)saveQueues.delete(key)}).catch(()=>{});
+  return operation;
+}
 const recoveryMode = BOOTSTRAP_RECOVERY_MODE;
 
 function defaultRoot() {
@@ -67,7 +76,7 @@ function defaultRoot() {
 }
 
 function systemRoot() { return path.join(defaultRoot(), '_Veloria'); }
-function legacyUserDataRoot() { return process.env.APPDATA ? path.join(process.env.APPDATA, 'Veloria') : ''; }
+function legacyUserDataRoot() { return !app.isPackaged && process.env.VELORIA_DEV_DATA_ROOT ? '' : process.env.APPDATA ? path.join(process.env.APPDATA, 'Veloria') : ''; }
 function dataPaths() {
   const base = path.join(systemRoot(), 'local-data');
   return {
@@ -92,8 +101,7 @@ async function migrateLegacyLocalData() {
   for (const [src, dst] of candidates) {
     if (!fs.existsSync(dst) && fs.existsSync(src)) { try { await ensureDir(path.dirname(dst)); await fsp.copyFile(src, dst); } catch {} }
   }
-  // Old Chromium storage could contain note content. Once the disk state has been migrated, remove it.
-  if (fs.existsSync(p.data)) { try { await fsp.rm(legacy, { recursive: true, force: true }); } catch {} }
+  // Keep the old data as a recovery source after migration.
 }
 
 async function loadConfig() {
@@ -496,8 +504,12 @@ async function savePageText(payload = {}) {
   if (!isInsideAny([root], dir)) throw new Error('Geçersiz sayfa klasörü.');
   await ensureDir(dir);
   const baseName = sanitizeSegment(payload.pageTitle || 'Not', 'Not');
-  const target = path.join(dir, `${baseName}.txt`);
+  let target = path.join(dir, `${baseName}.txt`);
   const previous = config.noteFiles?.[pageId] ? path.resolve(config.noteFiles[pageId]) : '';
+  // Existing notes keep their physical paths, including the legacy Dosyalar layout.
+  if (previous && isInside(root, previous) &&
+      [dir, path.join(dir, 'Dosyalar')].some(p => samePath(p, path.dirname(previous)))) target = previous;
+  if (fs.existsSync(target) && (!previous || !samePath(previous, target))) target = await uniqueDestination(dir, `${baseName}.txt`);
   if (previous && previous !== path.resolve(target) && fs.existsSync(previous) && isInsideAny(managedRoots(), previous)) {
     try {
       if (!fs.existsSync(target)) {
@@ -524,7 +536,8 @@ async function pruneDeletedNoteContainers(filePath) {
   const p = path.resolve(String(filePath || ''));
   const roots = managedRoots().map((x) => path.resolve(x));
   if (!isInsideAny(roots, p)) return;
-  const dirs = [path.dirname(p), path.dirname(path.dirname(p))]; // Dosyalar, then page folder.
+  const dirs = [path.dirname(p)];
+  if (path.basename(dirs[0]).toLocaleLowerCase('tr') === 'dosyalar') dirs.push(path.dirname(dirs[0]));
   for (const dir of dirs) {
     if (!isInsideAny(roots, dir) || roots.some((root) => root === path.resolve(dir))) break;
     try {
@@ -548,7 +561,7 @@ function isManagedNoteTextPath(filePath) {
     const rel = path.relative(root, candidate);
     const parts = rel.split(path.sep).filter(Boolean);
     if (!parts.length || String(parts[0]).toLowerCase() === '_veloria') return false;
-    return String(path.basename(path.dirname(candidate))).toLocaleLowerCase('tr') === 'dosyalar';
+    return Object.values(config.noteFiles || {}).some(p => samePath(p, candidate));
   }
   return false;
 }
@@ -1039,6 +1052,11 @@ function createWindow() {
     if (!mainWindow.isMinimized() && !mainWindow.isMaximized()) config.windowBounds = mainWindow.getBounds();
   });
   mainWindow.on('closed', () => { rendererReady = false; mainWindow = null; saveConfig().catch(() => {}); });
+  mainWindow.on('close', (event) => {
+    if (recoveryMode || !rendererReady || mainWindow.allowSavedClose || mainWindow.webContents.isCrashed()) return;
+    event.preventDefault();
+    mainWindow.webContents.send('veloria:before-close');
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^(https?:|mailto:)/i.test(url)) shell.openExternal(url).catch(() => {});
@@ -1058,6 +1076,10 @@ function createWindow() {
 }
 
 function registerIpc() {
+  handleTrusted('veloria:ready-to-close', async () => {
+    if (mainWindow) { mainWindow.allowSavedClose = true; setImmediate(() => mainWindow?.close()); }
+    return true;
+  });
   handleTrusted('veloria:get-info', async () => ({
     isDesktop: true,
     version: app.getVersion(),
@@ -1289,16 +1311,16 @@ function registerIpc() {
   });
   handleTrusted('veloria:quick-close', async () => { quickWindow?.close(); return true; });
 
-  handleTrusted('veloria:save-page-text', async (_e, payload = {}) => savePageText(payload));
+  handleTrusted('veloria:save-page-text', async (_e, payload = {}) => queueSave(`page:${payload.pageId}`,()=>savePageText(payload)));
   handleTrusted('veloria:delete-page-texts', async (_e, items = []) => deletePageTexts(items));
   handleTrusted('veloria:reconcile-page-texts', async (_e, validPageIds = []) => reconcilePageTexts(validPageIds));
   handleTrusted('veloria:read-text-file', async (_e, filePath) => readManagedText(filePath));
   handleTrusted('veloria:write-text-file', async (_e, payload = {}) => writeManagedText(payload.filePath, payload.text));
-  handleTrusted('veloria:save-state', async (_e, text) => saveState(text));
+  handleTrusted('veloria:save-state', async (_e, text) => queueSave('state',()=>saveState(text)));
   handleTrusted('veloria:read-state', async () => readState());
-  handleTrusted('veloria:save-ui-state', async (_e, text) => saveUiState(text));
+  handleTrusted('veloria:save-ui-state', async (_e, text) => queueSave('ui',()=>saveUiState(text)));
   handleTrusted('veloria:read-ui-state', async () => readUiState());
-  handleTrusted('veloria:save-draft', async (_e, payload = {}) => saveDraft(payload.key, payload.text));
+  handleTrusted('veloria:save-draft', async (_e, payload = {}) => queueSave(`draft:${payload.key}`,()=>saveDraft(payload.key, payload.text)));
   handleTrusted('veloria:read-draft', async (_e, key) => readDraft(key));
   handleTrusted('veloria:delete-draft', async (_e, key) => deleteDraft(key));
   handleTrusted('veloria:open-backup-folder', async () => {
@@ -1356,8 +1378,8 @@ if (!gotLock) {
     await ensureWindowsShellIntegration();
     registerIpc();
     createWindow();
-    if (!recoveryMode) { registerGlobalShortcuts(); }
-    try { app.setAsDefaultProtocolClient('veloria'); } catch {}
+    if (!recoveryMode && !process.env.VELORIA_DEV_DATA_ROOT) { registerGlobalShortcuts(); }
+    if (app.isPackaged) try { app.setAsDefaultProtocolClient('veloria'); } catch {}
     parseLaunchArgs(process.argv);
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); else showMainWindow(); });
   }).catch((e) => {

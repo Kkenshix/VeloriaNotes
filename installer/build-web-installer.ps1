@@ -1,11 +1,12 @@
 ﻿param(
-  [string]$Version = '1.0'
+  [string]$Version = '1.1.0'
 )
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Bootstrap = Join-Path $Root 'installer\bootstrap'
 $Stage = Join-Path $env:TEMP ("VeloriaNotesWebInstaller-" + $PID)
+if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Stage)) -ne [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\')) { throw 'Beklenmeyen geçici build yolu.' }
 $Payload = Join-Path $Bootstrap 'payload.zip'
 $Dist = Join-Path $Root 'dist'
 $Out = Join-Path $Dist ("Veloria-Notes-Web-Setup-$Version.exe")
@@ -37,13 +38,13 @@ try {
   Push-Location $Bootstrap
   try {
     $env:GOOS='windows'; $env:GOARCH='amd64'; $env:CGO_ENABLED='0'
-    & go.exe build -trimpath -ldflags '-s -w' -o $Out .
+    & go.exe build -trimpath -ldflags "-s -w -X main.version=$Version" -o $Out .
     if ($LASTEXITCODE -ne 0) { throw 'Go web kurulum EXE derlemesi başarısız.' }
   } finally { Pop-Location }
 
   Download-File 'https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe' $Rcedit
   if ((Get-FileHash -Algorithm SHA256 $Rcedit).Hash.ToUpperInvariant() -ne $RceditSha256) { throw 'rcedit SHA-256 doğrulaması başarısız.' }
-  & $Rcedit $Out --set-icon (Join-Path $Root 'app\icon.ico') --set-file-version '1.0.0.0' --set-product-version '1.0.0.0' --set-version-string ProductName 'Veloria Notes Kurulum' --set-version-string FileDescription 'Veloria Notes Web Kurulumu' --set-version-string CompanyName 'Kenshix'
+  & $Rcedit $Out --set-icon (Join-Path $Root 'app\icon.ico') --set-file-version "$Version.0" --set-product-version "$Version.0" --set-version-string ProductName 'Veloria Notes Kurulum' --set-version-string FileDescription 'Veloria Notes Web Kurulumu' --set-version-string CompanyName 'Kenshix'
   if ($LASTEXITCODE -ne 0) { throw 'Kurulum EXE simgesi/metadata işlemi başarısız.' }
   Write-Host "Hazır: $Out" -ForegroundColor Green
 } finally {

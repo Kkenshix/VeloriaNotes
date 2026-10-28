@@ -1,5 +1,31 @@
 # Değişiklik Günlüğü
 
+## 1.1.0 - 2026-10-28
+
+### Düzeltildi
+- Yazılan ve yapıştırılan web adresleri tıklanabilir; tek tıkla Windows'un varsayılan tarayıcısında açılır.
+- Geri alma/ileri alma; yapıştırma, özel tuş işlemleri, dosya editörü ve imleç konumu için tutarlı hâle getirildi.
+- Düz metindeki `+`, `-`, `*`, başlık ve benzeri işaretler otomatik liste/başlığa çevrilmez. Açık biçimlendirme kısayolları korunur.
+- Enter sonrasında ve satır ortasında yapıştırmanın ek paragraf/boş satır oluşturması giderildi. Kullanıcının bıraktığı boş satırlar korunur.
+- Paragraf boşlukları ve satır ortasında Enter basıldığında editörün yüksekliğinin kilitlenmesi düzeltildi.
+- Uygulama kapanmadan önce bekleyen not ve taslak kayıtlarının bitmesi sağlandı; kayıtlar sırayla diske yazılır.
+- Not içindeki dosya eklerinin kimliği/yolu yeniden kayıtta korunur.
+- TXT aynalarında Windows satır sonlarının iki kez eklenmesi ve aynı adlı fiziksel dosyanın üzerine yazılması giderildi.
+- Geç açılan dosya önizlemesinin sonradan seçilen sayfanın üzerine gelmesi engellendi.
+- Aynı sayfaya tekrar tıklamak editörü yeniden oluşturup imleci sıfırlamaz.
+- Küçük pencerelerde sayfa başlığı ve düğmelerinin kesilmesi giderildi.
+- Kurucu artık program klasörünün tamamını veya eski veri kopyalarını silmez; başka araç/dosya klasörleri korunur.
+
+### Eklendi
+- Sekme sağ tık menüsü: sekmeyi, diğerlerini, soldakileri, sağdakileri veya tümünü kapatma. Orta tıkla kapatma.
+- Sayfa, klasör ve dosya geçişlerinde 160 ms animasyon; azaltılmış hareket ayarına uyum.
+- Her açılışta kapalı sekmelerle başlama. Notlar ve dosya taslakları saklanır.
+- Yeni not/ekler doğrudan sayfa klasörüne kaydedilir; fazladan `Dosyalar` alt klasörü açılmaz. Mevcut dosyalar taşınmaz.
+- 23 otomatik test ve gerçek Electron penceresi üzerinde 17 regresyon senaryosu.
+
+### Güncellendi
+- Electron `44.10.0`, electron-builder `26.18.0`; kilitli bağımlılık sürümleri. Sürüm hazırlığında npm denetiminde bilinen açık sayısı: 0.
+
 ## 1.0 - 2026-09-20
 
 ### Değiştirildi

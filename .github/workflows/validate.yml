@@ -1,0 +1,28 @@
+name: Validate
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run validate
+      - run: npm run test:ui
+      - name: Parse installer scripts
+        shell: pwsh
+        run: |
+          Get-ChildItem .. -Recurse -Filter *.ps1 | Where-Object { $_.FullName -notmatch 'node_modules' } | ForEach-Object {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if ($errors) { throw ($errors.Message -join '; ') }
+          }

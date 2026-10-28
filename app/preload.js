@@ -76,6 +76,8 @@ contextBridge.exposeInMainWorld('veloriaDesktop', {
   showWindow: () => ipcRenderer.invoke('veloria:show-window'),
   hideWindow: () => ipcRenderer.invoke('veloria:hide-window'),
   quit: () => ipcRenderer.invoke('veloria:quit'),
+  onBeforeClose: (callback) => subscribe('veloria:before-close', callback),
+  readyToClose: () => ipcRenderer.invoke('veloria:ready-to-close'),
   openExternal: (url) => ipcRenderer.invoke('veloria:open-external', url),
   transferControl: (transferId, action) => ipcRenderer.invoke('veloria:transfer-control', { transferId, action }),
   previewManagedFile: (filePath) => ipcRenderer.invoke('veloria:preview-file', filePath),

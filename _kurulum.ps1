@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
-$ElectronVersion = '44.4.3'
-$AppVersion = '1.0'
+$ElectronVersion = '44.10.0'
+$AppVersion = '1.1.0'
 $AppName = 'Veloria Notes'
 $Author = 'Kenshix'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -9,6 +9,7 @@ $UpdaterSource = Join-Path $Root 'VELORIA_UPDATE_ENGINE.ps1'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Veloria Notes'
 $LegacyInstallDir = Join-Path $env:LOCALAPPDATA 'Veloria'
 $TempDir = Join-Path $env:TEMP ("VeloriaNotesInstall-" + $PID)
+if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($TempDir)) -ne [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\')) { throw 'Beklenmeyen geçici kurulum yolu.' }
 $RuntimeZip = Join-Path $TempDir ("electron-v$ElectronVersion-win32-x64.zip")
 $SumsFile = Join-Path $TempDir 'SHASUMS256.txt'
 $ReleaseBase = "https://github.com/electron/electron/releases/download/v$ElectronVersion"
@@ -103,9 +104,9 @@ function Download-File([string]$Url, [string]$OutFile) {
 
 function Stop-VeloriaNotes {
   foreach ($name in @('Veloria Notes','Veloria')) { Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object { try { [void]$_.CloseMainWindow() } catch {} } }
-  Start-Sleep -Milliseconds 1300
-  foreach ($name in @('Veloria Notes','Veloria')) { Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
-  Start-Sleep -Milliseconds 300
+  $deadline = (Get-Date).AddSeconds(30)
+  while ((Get-Process -Name 'Veloria Notes','Veloria' -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+  if (Get-Process -Name 'Veloria Notes','Veloria' -ErrorAction SilentlyContinue) { throw 'Veloria Notes henüz kapanmadı. Açık değişikliklerini kaydedip uygulamayı kapattıktan sonra kurulumu yeniden çalıştır.' }
 }
 
 function New-Shortcut([string]$ShortcutPath, [string]$TargetExe) {
@@ -177,18 +178,11 @@ try {
   Stop-VeloriaNotes
   Backup-UserStateBeforeUpdate
 
-  if ((Test-Path (Join-Path $InstallDir 'resources')) -and (Test-Path (Join-Path $InstallDir 'icudtl.dat'))) { $RuntimeSourceDir=$InstallDir }
-  elseif ((Test-Path (Join-Path $LegacyInstallDir 'resources')) -and (Test-Path (Join-Path $LegacyInstallDir 'icudtl.dat'))) { $RuntimeSourceDir=$LegacyInstallDir }
+  Backup-InstalledAppLayer $InstallDir
+  if ((Test-Path (Join-Path $InstallDir 'icudtl.dat')) -and (Test-Path (Join-Path $InstallDir 'version')) -and ((Get-Content -Raw (Join-Path $InstallDir 'version')).Trim() -eq $ElectronVersion)) { $RuntimeSourceDir=$InstallDir }
 
   if ($RuntimeSourceDir) {
     Say '[1/7] Mevcut Electron çalışma zamanı hazırlanıyor...' Cyan
-    Backup-InstalledAppLayer $RuntimeSourceDir
-    New-Item -ItemType Directory -Force -Path $ExistingRuntimeDir | Out-Null
-    Copy-Item -Path (Join-Path $RuntimeSourceDir '*') -Destination $ExistingRuntimeDir -Recurse -Force
-    Remove-Item -LiteralPath (Join-Path $ExistingRuntimeDir 'resources\app') -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath (Join-Path $ExistingRuntimeDir 'KALDIR_VELORIA.ps1') -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath (Join-Path $ExistingRuntimeDir 'KALDIR_VELORIA_NOTES.ps1') -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath (Join-Path $ExistingRuntimeDir 'VELORIA_UPDATE_ENGINE.ps1') -Force -ErrorAction SilentlyContinue
     $ReuseExistingRuntime=$true
   } else {
     Say '[1/7] Electron Windows çalışma zamanı indiriliyor...' Cyan
@@ -204,32 +198,32 @@ try {
 
   if($ReuseExistingRuntime){Say '[2/7] Mevcut çalışma zamanı doğrulandı.' Cyan}
   Say '[3/7] Program dosyaları hazırlanıyor...' Cyan
-  if(Test-Path $InstallDir){Remove-Item -LiteralPath $InstallDir -Recurse -Force}
+  if ([IO.Path]::GetFullPath($InstallDir) -ne [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Veloria Notes'))) { throw 'Beklenmeyen kurulum yolu.' }
   New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
   Say '[4/7] Veloria Notes.exe oluşturuluyor...' Cyan
   if($ReuseExistingRuntime){
-    Copy-Item -Path (Join-Path $ExistingRuntimeDir '*') -Destination $InstallDir -Recurse -Force
     $legacyExe=Join-Path $InstallDir 'Veloria.exe';$electronExe=Join-Path $InstallDir 'electron.exe'
-    if(Test-Path $legacyExe){Rename-Item -LiteralPath $legacyExe -NewName 'Veloria Notes.exe' -Force}
-    elseif(Test-Path $electronExe){Rename-Item -LiteralPath $electronExe -NewName 'Veloria Notes.exe' -Force}
+    if(-not(Test-Path $Exe)){
+      if(Test-Path $legacyExe){Move-Item -LiteralPath $legacyExe -Destination $Exe -Force}
+      elseif(Test-Path $electronExe){Move-Item -LiteralPath $electronExe -Destination $Exe -Force}
+    }
   } else {
     Expand-Archive -LiteralPath $RuntimeZip -DestinationPath $InstallDir -Force
     $electronExe=Join-Path $InstallDir 'electron.exe';if(-not(Test-Path $electronExe)){throw 'electron.exe çalışma zamanı içinde bulunamadı.'}
-    Rename-Item -LiteralPath $electronExe -NewName 'Veloria Notes.exe'
+    Move-Item -LiteralPath $electronExe -Destination $Exe -Force
   }
   if(-not(Test-Path $Exe)){throw 'Veloria Notes.exe oluşturulamadı.'}
   $defaultApp=Join-Path $InstallDir 'resources\default_app.asar';if(Test-Path $defaultApp){Remove-Item -LiteralPath $defaultApp -Force}
   $appDir=Join-Path $InstallDir 'resources\app';New-Item -ItemType Directory -Force -Path $appDir | Out-Null
-  Copy-Item -Path (Join-Path $Payload '*') -Destination $appDir -Recurse -Force
-  foreach($privateName in @('veloria-state.json','veloria-native.json','veloria-file-index.json','veloria-trash-index.json','local-data','backups','drafts')){Remove-Item -LiteralPath (Join-Path $appDir $privateName) -Recurse -Force -ErrorAction SilentlyContinue}
+  Get-ChildItem -LiteralPath $Payload -Force | Where-Object { $_.Name -notin @('node_modules','tests','package-lock.json') } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $appDir -Recurse -Force }
   Copy-Item -LiteralPath $UpdaterSource -Destination (Join-Path $InstallDir 'VELORIA_UPDATE_ENGINE.ps1') -Force
 
   if(Test-Path $IconIco){
     try{
       Download-File 'https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe' $Rcedit
       if((Get-FileHash -Algorithm SHA256 $Rcedit).Hash.ToUpperInvariant() -ne $RceditSha256){throw 'rcedit SHA-256 doğrulaması başarısız.'}
-      & $Rcedit $Exe --set-icon $IconIco --set-file-version '1.0.0.0' --set-product-version '1.0.0.0' --set-version-string ProductName 'Veloria Notes' --set-version-string FileDescription 'Veloria Notes' --set-version-string CompanyName 'Kenshix'
+      & $Rcedit $Exe --set-icon $IconIco --set-file-version "$AppVersion.0" --set-product-version "$AppVersion.0" --set-version-string ProductName 'Veloria Notes' --set-version-string FileDescription 'Veloria Notes' --set-version-string CompanyName 'Kenshix'
     }catch{Say ('EXE simgesi uygulanamadı; uygulama içi simge kullanılacak: '+$_.Exception.Message) Yellow}
   }
 
@@ -246,7 +240,6 @@ try {
   Remove-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Veloria' -Recurse -Force -ErrorAction SilentlyContinue
 
   Say '[7/7] Kurulum son kontrolleri tamamlanıyor...' Cyan
-  if($LegacyInstallDir -ne $InstallDir -and (Test-Path $LegacyInstallDir)){Remove-Item -LiteralPath $LegacyInstallDir -Recurse -Force -ErrorAction SilentlyContinue}
   Remove-Item -LiteralPath $TempDir -Recurse -Force -ErrorAction SilentlyContinue
   Say ''
   Say 'KURULUM TAMAMLANDI.' Green

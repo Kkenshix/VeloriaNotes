@@ -14,6 +14,7 @@ import (
 
 //go:embed payload.zip
 var payloadFS embed.FS
+var version = "1.1.0"
 
 func extractZip(data []byte, dst string) error {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
@@ -88,7 +89,7 @@ func waitOnFailure() {
 func enableUTF8Console() {
 	// Windows console code page is shared by processes attached to the same console.
 	// This keeps PowerShell's UTF-8 Turkish output readable on Windows 10/11.
-	cmd := exec.Command("cmd.exe", "/d", "/c", "chcp 65001 >nul & title Veloria Notes v1.0 Kurulum")
+	cmd := exec.Command("cmd.exe", "/d", "/c", "chcp 65001 >nul & title Veloria Notes v"+version+" Kurulum")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -77,7 +77,7 @@ test('uniqueDestination var olan dosyayı ezmeden yeni ad üretir', async (t) =>
 
 test('pageFolderFromMeta güvenli klasör ağacı üretir', () => {
   const rel = pageFolderFromMeta({ categoryPath: ['Proje:1', 'CON'], pageTitle: 'Not?*' });
-  assert.equal(rel, path.join('Proje_1', '_CON', 'Not__', 'Dosyalar'));
+  assert.equal(rel, path.join('Proje_1', '_CON', 'Not__'));
   assert.equal(path.isAbsolute(rel), false);
 });
 
